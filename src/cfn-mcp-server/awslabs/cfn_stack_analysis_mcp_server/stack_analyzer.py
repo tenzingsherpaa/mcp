@@ -104,3 +104,4 @@ class StackAnalyzer:
         """
         # Use the ResourceScanner to analyze unmanaged resources
         return None
+

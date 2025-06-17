@@ -9,6 +9,7 @@
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions
 # and limitations under the License.
 
+
 def handle_aws_api_error(e: Exception) -> Exception:
     """Handle common AWS API errors and return standardized error responses.
 
@@ -121,3 +122,4 @@ class ServerError(Exception):
         super().__init__('An internal error occurred while processing your request')
         print(log)  # Print the detailed error for debugging
         self.type = 'server'  # Indicates this is a server-side error
+
