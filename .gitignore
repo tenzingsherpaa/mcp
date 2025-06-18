@@ -181,6 +181,9 @@ env.bak/
 venv.bak/
 .direnv/
 
+# Certificates
+awslabs/certs
+
 # Spyder project settings
 .spyderproject
 .spyproject
@@ -557,3 +560,6 @@ dist
 
 # End of https://www.toptal.com/developers/gitignore/api/jetbrains+all,pycharm+all,node
 samples/mcp-integration-with-nova-canvas/output/*
+
+memory-bank/*
+.clinerules

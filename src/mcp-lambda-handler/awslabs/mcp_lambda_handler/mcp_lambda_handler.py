@@ -1,3 +1,17 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import functools
 import inspect
 import json
@@ -14,7 +28,20 @@ from awslabs.mcp_lambda_handler.types import (
     TextContent,
 )
 from contextvars import ContextVar
-from typing import Any, Callable, Dict, Generic, List, Optional, TypeVar, Union, get_type_hints
+from enum import Enum
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Generic,
+    List,
+    Optional,
+    TypeVar,
+    Union,
+    get_args,
+    get_origin,
+    get_type_hints,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -170,15 +197,51 @@ class MCPLambdaHandler:
                             arg_name, arg_desc = line.split(':', 1)
                             arg_descriptions[arg_name.strip()] = arg_desc.strip()
 
+            def get_type_schema(type_hint: Any) -> Dict[str, Any]:
+                # Handle basic types
+                if type_hint is int:
+                    return {'type': 'integer'}
+                elif type_hint is float:
+                    return {'type': 'number'}
+                elif type_hint is bool:
+                    return {'type': 'boolean'}
+                elif type_hint is str:
+                    return {'type': 'string'}
+
+                # Handle Enums
+                if isinstance(type_hint, type) and issubclass(type_hint, Enum):
+                    return {'type': 'string', 'enum': [e.value for e in type_hint]}
+
+                # Get origin type (e.g., Dict from Dict[str, int])
+                origin = get_origin(type_hint)
+                if origin is None:
+                    return {'type': 'string'}  # Default for unknown types
+
+                # Handle Dict types
+                if origin is dict or origin is Dict:
+                    args = get_args(type_hint)
+                    if not args:
+                        return {'type': 'object', 'additionalProperties': True}
+
+                    # Get value type schema (args[1] is value type)
+                    value_schema = get_type_schema(args[1])
+                    return {'type': 'object', 'additionalProperties': value_schema}
+
+                # Handle List types
+                if origin is list or origin is List:
+                    args = get_args(type_hint)
+                    if not args:
+                        return {'type': 'array', 'items': {}}
+
+                    item_schema = get_type_schema(args[0])
+                    return {'type': 'array', 'items': item_schema}
+
+                # Default for unknown complex types
+                return {'type': 'string'}
+
             # Build properties from type hints
             for param_name, param_type in hints.items():
-                param_schema = {'type': 'string'}  # Default to string
-                if param_type is int:
-                    param_schema['type'] = 'integer'
-                elif param_type is float:
-                    param_schema['type'] = 'number'
-                elif param_type is bool:
-                    param_schema['type'] = 'boolean'
+                param_schema = get_type_schema(param_type)
 
                 if param_name in arg_descriptions:
                     param_schema['description'] = arg_descriptions[param_name]
@@ -294,7 +357,7 @@ class MCPLambdaHandler:
                 if isinstance(body, dict) and 'id' not in body:
                     logger.debug('Request is a notification')
                     return {
-                        'statusCode': 204,
+                        'statusCode': 202,
                         'body': '',
                         'headers': {'Content-Type': 'application/json', 'MCP-Version': '0.6'},
                     }
@@ -359,7 +422,19 @@ class MCPLambdaHandler:
                     )
 
                 try:
-                    result = self.tool_implementations[tool_name](**tool_args)
+                    # Convert enum string values to enum objects
+                    converted_args = {}
+                    tool_func = self.tool_implementations[tool_name]
+                    hints = get_type_hints(tool_func)
+
+                    for arg_name, arg_value in tool_args.items():
+                        arg_type = hints.get(arg_name)
+                        if isinstance(arg_type, type) and issubclass(arg_type, Enum):
+                            converted_args[arg_name] = arg_type(arg_value)
+                        else:
+                            converted_args[arg_name] = arg_value
+
+                    result = tool_func(**converted_args)
                     content = [TextContent(text=str(result)).model_dump()]
                     return self._create_success_response(
                         {'content': content}, request.id, session_id
@@ -374,6 +449,10 @@ class MCPLambdaHandler:
                         error_content,
                         session_id,
                     )
+
+            # Handle pings
+            if request.method == 'ping':
+                return self._create_success_response({}, request.id, session_id)
 
             # Handle unknown methods
             return self._create_error_response(
