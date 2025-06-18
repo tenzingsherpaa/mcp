@@ -22,6 +22,7 @@ from awslabs.cfn_mcp_server.context import Context
 from awslabs.cfn_mcp_server.errors import ClientError, handle_aws_api_error
 from awslabs.cfn_mcp_server.iac_generator import create_template as create_template_impl
 from awslabs.cfn_mcp_server.schema_manager import schema_manager
+from awslabs.cfn_mcp_server.stack_analysis.stack_analyzer import StackAnalyzer
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
@@ -418,6 +419,78 @@ async def create_template(
         save_to_file=save_to_file,
         region_name=region,
     )
+
+
+
+@mcp.tool()
+async def analyze_stack(
+    stack_name: str = Field(
+        description='The name of the CloudFormation stack to analyze'
+    ),
+    region: str | None = Field(
+        description='The AWS region that the operation should be performed in', default=None
+    ),
+) -> dict:
+    """Analyze a CloudFormation stack and return detailed information about its resources.
+
+    Parameters:
+        stack_name: The name of the CloudFormation stack to analyze
+        region: AWS region to use (e.g., "us-east-1", "us-west-2")
+
+    Returns:
+        Detailed information about the stack and its resources in three distinct sections:
+        1. Resources in the given stack
+        2. Related resources that are not managed by CloudFormation
+        3. Related resources that are managed by different stacks
+        
+        The output is formatted with clear section dividers for readability.
+    """
+    if not stack_name:
+        raise ClientError('Please provide a stack name')
+    
+    # Use default region if not specified
+    if not region:
+        # You might want to get this from environment or config
+        region = "us-east-1"
+    
+    try:
+        # Initialize the stack analyzer
+        analyzer = StackAnalyzer(region)
+        
+        # Get stack analysis
+        stack_analysis = analyzer.analyze_stack(stack_name)
+        
+        # Get best practices
+        best_practices = StackAnalyzer.get_best_cfn_practices()
+        
+        # Format the response
+        result = {
+            "stack_analysis": {
+                "name": stack_name,
+                "region": region,
+                "status": stack_analysis.get("stack_status"),
+                "creation_time": stack_analysis.get("creation_time"),
+                "last_updated_time": stack_analysis.get("last_updated_time"),
+                "resource_count": stack_analysis.get("resource_count"),
+            },
+            "resources": {
+                "managed_by_stack": stack_analysis.get("resources"),
+                "related_unmanaged": {"message": "Analysis of unmanaged resources not implemented yet"},
+                "related_in_other_stacks": {"message": "Analysis of resources in other stacks not implemented yet"}
+            },
+            "best_practices": {
+                "recommendations": [
+                    {"category": "resource_management", "description": best_practices["resource_management"]},
+                    {"category": "stack_policies", "description": best_practices["stack_policies"]}
+                ]
+            }
+        }
+        
+        return result
+    except Exception as e:
+        logger.error(f"Error in analyze_stack: {str(e)}")
+        return {"error": str(e)}
+
 
 
 def main():
