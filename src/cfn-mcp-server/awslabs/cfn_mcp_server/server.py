@@ -27,6 +27,7 @@ from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
 
+
 mcp = FastMCP(
     'awslabs.cfn-mcp-server',
     instructions="""
@@ -488,8 +489,8 @@ async def analyze_stack(
         
         return result
     except Exception as e:
-        logger.error(f"Error in analyze_stack: {str(e)}")
-        return {"error": str(e)}
+        raise ClientError(f"Error in analyze_stack: {str(e)}")
+   
 
 
 
