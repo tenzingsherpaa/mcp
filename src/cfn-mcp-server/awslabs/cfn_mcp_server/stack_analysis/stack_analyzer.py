@@ -1,52 +1,45 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 #
-# Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance
-# with the License. A copy of the License is located at
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
 #
-#    http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
-# or in the 'license' file accompanying this file. This file is distributed on an 'AS IS' BASIS, WITHOUT WARRANTIES
-# OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions
-# and limitations under the License.
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 
 import logging
 from awslabs.cfn_mcp_server.aws_client import get_aws_client
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List
 
 
 logger = logging.getLogger(__name__)
 
 
 class StackAnalyzer:
-    """
-    A class to analyze CloudFormation stacks and resources.
-    """
-    
+    """A class to analyze CloudFormation stacks and resources."""
+
     # CloudFormation best practices || Retrieved from online
     # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/best-practices.html
     _CF_BEST_PRACTICES = {
-        "nested_stacks": "Use nested stacks to organize related resources that are part of a single solution. Nested stacks are stacks created as part of other stacks. As your infrastructure grows, common patterns can emerge in which you declare the same components in multiple templates. You can separate out these common components and create dedicated templates for them.",
-        
-        "cross_stack_references": "Use cross-stack references to export shared resources. Cross-stack references let you share resources between stacks. By using cross-stack references, you don't need to hard-code values or use custom scripts to get output values from one stack to another.",
-        
-        "resource_management": "Manage all stack resources through CloudFormation. After you launch a stack, use the CloudFormation console, API, or CLI to update resources in your stacks. This ensures that your changes are synchronized with your stack templates and related stack resources.",
-        
-        "stack_policies": "Use stack policies to prevent unintentional updates to critical stack resources. Stack policies help protect resources from unintentional updates that could cause disruption or data loss.",
-        
-        "iam_access_control": "Use IAM to control access to CloudFormation resources. IAM lets you securely control who can access your CloudFormation stacks and what actions they can perform on them.",
-        
-        "parameter_constraints": "Use parameter constraints to enforce proper input validation. Parameter constraints help ensure that input values meet your requirements before CloudFormation creates or updates any resources.",
-        
-        "resource_dependencies": "Explicitly define resource dependencies when needed. CloudFormation automatically determines the correct order to create or delete resources based on their dependencies. However, in some cases, you might need to explicitly define these dependencies.",
-        
-        "resource_cleanup": "Delete unused resources to avoid unnecessary costs. CloudFormation makes it easy to delete an entire stack, but you should also monitor for and remove individual resources that are no longer needed.",
-        
-        "common_components": "Extract common components into reusable templates or modules. This promotes consistency and reduces duplication across your infrastructure."
+        'nested_stacks': 'Use nested stacks to organize related resources that are part of a single solution. Nested stacks are stacks created as part of other stacks. As your infrastructure grows, common patterns can emerge in which you declare the same components in multiple templates. You can separate out these common components and create dedicated templates for them.',
+        'cross_stack_references': "Use cross-stack references to export shared resources. Cross-stack references let you share resources between stacks. By using cross-stack references, you don't need to hard-code values or use custom scripts to get output values from one stack to another.",
+        'resource_management': 'Manage all stack resources through CloudFormation. After you launch a stack, use the CloudFormation console, API, or CLI to update resources in your stacks. This ensures that your changes are synchronized with your stack templates and related stack resources.',
+        'stack_policies': 'Use stack policies to prevent unintentional updates to critical stack resources. Stack policies help protect resources from unintentional updates that could cause disruption or data loss.',
+        'iam_access_control': 'Use IAM to control access to CloudFormation resources. IAM lets you securely control who can access your CloudFormation stacks and what actions they can perform on them.',
+        'parameter_constraints': 'Use parameter constraints to enforce proper input validation. Parameter constraints help ensure that input values meet your requirements before CloudFormation creates or updates any resources.',
+        'resource_dependencies': 'Explicitly define resource dependencies when needed. CloudFormation automatically determines the correct order to create or delete resources based on their dependencies. However, in some cases, you might need to explicitly define these dependencies.',
+        'resource_cleanup': 'Delete unused resources to avoid unnecessary costs. CloudFormation makes it easy to delete an entire stack, but you should also monitor for and remove individual resources that are no longer needed.',
+        'common_components': 'Extract common components into reusable templates or modules. This promotes consistency and reduces duplication across your infrastructure.',
     }
-       
+
     def __init__(self, region: str):
-        """
-        Initialize the StackAnalyzer with the specified region.
+        """Initialize the StackAnalyzer with the specified region.
 
         Args:
             region: The AWS region to use for API calls.
@@ -56,28 +49,25 @@ class StackAnalyzer:
 
     @classmethod
     def get_best_cfn_practices(cls) -> Dict[str, str]:
-        """
-        Get CloudFormation best practices.
-        
+        """Get CloudFormation best practices.
+
         Returns:
             Dictionary of CloudFormation best practices
         """
         return cls._CF_BEST_PRACTICES
 
-    # Cloudformation API's Access point: Helper methods 
+    # Cloudformation API's Access point: Helper methods
     def list_stacks(self) -> List[Dict[str, Any]]:
-        """
-        List CloudFormation stacks in the AWS account.
-        
+        """List CloudFormation stacks in the AWS account.
+
         Returns:
             List of stacks
         """
         response = self.cfn_client.list_stacks()
         return response.get('StackSummaries', [])
-    
+
     def describe_stack(self, stack_name: str) -> Dict[str, Any]:
-        """
-        Describe a CloudFormation stack.
+        """Describe a CloudFormation stack.
 
         Args:
             stack_name: Name of the stack to describe
@@ -88,76 +78,68 @@ class StackAnalyzer:
         response = self.cfn_client.describe_stacks(StackName=stack_name)
         return response.get('Stacks', [{}])[0]
 
-
     def list_stack_resources(self, stack_name: str) -> List[Dict[str, Any]]:
-        """
-        List resources in a CloudFormation stack.
-        
+        """List resources in a CloudFormation stack.
+
         Args:
             stack_name: Name of the stack
-            
         Returns:
             List of stack resources
         """
         response = self.cfn_client.list_stack_resources(StackName=stack_name)
         return response.get('StackResourceSummaries', [])
-    
+
     def get_stack_template(self, stack_name: str) -> Dict[str, Any]:
-        """
-        Get the template for a CloudFormation stack.
-        
+        """Get the template for a CloudFormation stack.
+
         Args:
             stack_name: Name of the stack
-            
+
         Returns:
             Dict containing the stack template
         """
         response = self.cfn_client.get_template(StackName=stack_name)
         return response.get('TemplateBody', {})
-    
 
     def analyze_stack(self, stack_name: str) -> Dict[str, Any]:
-        """
-        Analyze a CloudFormation stack.
-        
+        """Analyze a CloudFormation stack.
+
         Args:
             stack_name: Name of the stack
-            
+
         Returns:
             Dict containing stack analysis
         """
         try:
             # Get stack details
             stack_details = self.describe_stack(stack_name)
-            
+
             # Get stack resources
             stack_resources = self.list_stack_resources(stack_name)
-            
+
             # Basic analysis
             analysis = {
-                "stack_info": stack_details,
-                "resources": stack_resources,
-                "resource_count": len(stack_resources),
-                "stack_status": stack_details.get("StackStatus"),
-                "creation_time": stack_details.get("CreationTime"),
-                "last_updated_time": stack_details.get("LastUpdatedTime"),
-                "outputs": stack_details.get("Outputs", []),
-                "parameters": stack_details.get("Parameters", []),
-                "tags": stack_details.get("Tags", []),
+                'stack_info': stack_details,
+                'resources': stack_resources,
+                'resource_count': len(stack_resources),
+                'stack_status': stack_details.get('StackStatus'),
+                'creation_time': stack_details.get('CreationTime'),
+                'last_updated_time': stack_details.get('LastUpdatedTime'),
+                'outputs': stack_details.get('Outputs', []),
+                'parameters': stack_details.get('Parameters', []),
+                'tags': stack_details.get('Tags', []),
             }
-            
+
             return analysis
         except Exception as e:
-            logger.error(f"Error analyzing stack {stack_name}: {str(e)}")
-            return {"error": str(e)}
-    
+            logger.error(f'Error analyzing stack {stack_name}: {str(e)}')
+            return {'error': str(e)}
+
     def analyze_unmanaged_resources(self) -> Dict[str, Any]:
-        """
-        Analyze unmanaged resources in the AWS account.
-        
+        """Analyze unmanaged resources in the AWS account.
+
         Returns:
             Dict containing analysis of unmanaged resources
         """
         # This is a placeholder - actual implementation would require scanning resources
-        return {"message": "Unmanaged resource analysis not implemented yet"}
-
+        return {'message': 'Unmanaged resource analysis not implemented yet'}

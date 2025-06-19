@@ -1,21 +1,24 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 #
-# Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance
-# with the License. A copy of the License is located at
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
 #
-#    http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
-# or in the 'license' file accompanying this file. This file is distributed on an 'AS IS' BASIS, WITHOUT WARRANTIES
-# OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions
-# and limitations under the License.
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# SeeThe job failed because src the License for/cfn-mcp the specific language governing permissions and
+# limitations under the License.
 
 """Tests for the StackAnalyzer class."""
 
-import unittest
-from unittest.mock import patch, MagicMock
 import pytest
-from awslabs.cfn_mcp_server.stack_analysis.stack_analyzer import StackAnalyzer
+import unittest
 from awslabs.cfn_mcp_server.errors import ClientError
+from awslabs.cfn_mcp_server.stack_analysis.stack_analyzer import StackAnalyzer
+from unittest.mock import MagicMock, patch
 
 
 class TestStackAnalyzer(unittest.TestCase):
@@ -26,44 +29,42 @@ class TestStackAnalyzer(unittest.TestCase):
         """Set up each test."""
         # Create the mock client
         self.mock_cfn_client = MagicMock()
-        
+
         # Configure the mock to return our mock client
         mock_get_aws_client.return_value = self.mock_cfn_client
-        
+
         # Create the stack analyzer instance
         self.stack_analyzer = StackAnalyzer(region='us-east-1')
 
     def test_get_best_cfn_practices(self):
         """Test getting CloudFormation best practices."""
         best_practices = StackAnalyzer.get_best_cfn_practices()
-        
+
         # Verify the result contains expected keys
-        self.assertIn("nested_stacks", best_practices)
-        self.assertIn("cross_stack_references", best_practices)
-        self.assertIn("resource_management", best_practices)
-        self.assertIn("stack_policies", best_practices)
-        self.assertIn("iam_access_control", best_practices)
-        self.assertIn("parameter_constraints", best_practices)
-        self.assertIn("resource_dependencies", best_practices)
-        self.assertIn("resource_cleanup", best_practices)
-        self.assertIn("common_components", best_practices)
+        self.assertIn('nested_stacks', best_practices)
+        self.assertIn('cross_stack_references', best_practices)
+        self.assertIn('resource_management', best_practices)
+        self.assertIn('stack_policies', best_practices)
+        self.assertIn('iam_access_control', best_practices)
+        self.assertIn('parameter_constraints', best_practices)
+        self.assertIn('resource_dependencies', best_practices)
+        self.assertIn('resource_cleanup', best_practices)
+        self.assertIn('common_components', best_practices)
 
     def test_list_stacks(self):
         """Test listing CloudFormation stacks."""
         # Setup mock response
         expected_stacks = [
             {'StackName': 'stack1', 'StackStatus': 'CREATE_COMPLETE'},
-            {'StackName': 'stack2', 'StackStatus': 'UPDATE_COMPLETE'}
+            {'StackName': 'stack2', 'StackStatus': 'UPDATE_COMPLETE'},
         ]
-        
+
         # Update this to match the actual implementation's expected structure
-        self.mock_cfn_client.list_stacks.return_value = {
-            'StackSummaries': expected_stacks
-        }
-        
+        self.mock_cfn_client.list_stacks.return_value = {'StackSummaries': expected_stacks}
+
         # Call the method
         result = self.stack_analyzer.list_stacks()
-        
+
         # Update assertion to match what the implementation actually returns
         # If the implementation returns the 'StackSummaries' directly:
         self.assertEqual(result, expected_stacks)
@@ -77,15 +78,13 @@ class TestStackAnalyzer(unittest.TestCase):
         expected_description = {
             'StackName': stack_name,
             'StackStatus': 'CREATE_COMPLETE',
-            'Parameters': [{'ParameterKey': 'key1', 'ParameterValue': 'value1'}]
+            'Parameters': [{'ParameterKey': 'key1', 'ParameterValue': 'value1'}],
         }
-        self.mock_cfn_client.describe_stacks.return_value = {
-            'Stacks': [expected_description]
-        }
-        
+        self.mock_cfn_client.describe_stacks.return_value = {'Stacks': [expected_description]}
+
         # Call the method
         result = self.stack_analyzer.describe_stack(stack_name)
-        
+
         # Verify the result
         self.assertEqual(result, expected_description)
         self.mock_cfn_client.describe_stacks.assert_called_once_with(StackName=stack_name)
@@ -95,16 +94,24 @@ class TestStackAnalyzer(unittest.TestCase):
         # Setup mock response
         stack_name = 'test-stack'
         expected_resources = [
-            {'LogicalResourceId': 'resource1', 'PhysicalResourceId': 'id1', 'ResourceType': 'AWS::S3::Bucket'},
-            {'LogicalResourceId': 'resource2', 'PhysicalResourceId': 'id2', 'ResourceType': 'AWS::Lambda::Function'}
+            {
+                'LogicalResourceId': 'resource1',
+                'PhysicalResourceId': 'id1',
+                'ResourceType': 'AWS::S3::Bucket',
+            },
+            {
+                'LogicalResourceId': 'resource2',
+                'PhysicalResourceId': 'id2',
+                'ResourceType': 'AWS::Lambda::Function',
+            },
         ]
         self.mock_cfn_client.list_stack_resources.return_value = {
             'StackResourceSummaries': expected_resources
         }
-        
+
         # Call the method
         result = self.stack_analyzer.list_stack_resources(stack_name)
-        
+
         # Verify the result
         self.assertEqual(result, expected_resources)
         self.mock_cfn_client.list_stack_resources.assert_called_once_with(StackName=stack_name)
@@ -114,13 +121,11 @@ class TestStackAnalyzer(unittest.TestCase):
         # Setup mock response
         stack_name = 'test-stack'
         expected_template_body = '{"Resources": {"MyBucket": {"Type": "AWS::S3::Bucket"}}}'
-        self.mock_cfn_client.get_template.return_value = {
-            'TemplateBody': expected_template_body
-        }
-        
+        self.mock_cfn_client.get_template.return_value = {'TemplateBody': expected_template_body}
+
         # Call the method
         result = self.stack_analyzer.get_stack_template(stack_name)
-        
+
         # Verify the result
         self.assertEqual(result, expected_template_body)
         self.mock_cfn_client.get_template.assert_called_once_with(StackName=stack_name)
@@ -138,16 +143,22 @@ class TestStackAnalyzer(unittest.TestCase):
             'LastUpdatedTime': '2023-01-02T00:00:00Z',
             'Outputs': [{'OutputKey': 'BucketName', 'OutputValue': 'my-bucket'}],
             'Parameters': [{'ParameterKey': 'key1', 'ParameterValue': 'value1'}],
-            'Tags': [{'Key': 'Environment', 'Value': 'Production'}]
+            'Tags': [{'Key': 'Environment', 'Value': 'Production'}],
         }
-        self.mock_cfn_client.describe_stacks.return_value = {
-            'Stacks': [stack_details]
-        }
+        self.mock_cfn_client.describe_stacks.return_value = {'Stacks': [stack_details]}
 
         # Mock list_stack_resources
         stack_resources = [
-            {'LogicalResourceId': 'MyBucket', 'PhysicalResourceId': 'my-bucket', 'ResourceType': 'AWS::S3::Bucket'},
-            {'LogicalResourceId': 'MyFunction', 'PhysicalResourceId': 'my-function', 'ResourceType': 'AWS::Lambda::Function'}
+            {
+                'LogicalResourceId': 'MyBucket',
+                'PhysicalResourceId': 'my-bucket',
+                'ResourceType': 'AWS::S3::Bucket',
+            },
+            {
+                'LogicalResourceId': 'MyFunction',
+                'PhysicalResourceId': 'my-function',
+                'ResourceType': 'AWS::Lambda::Function',
+            },
         ]
         self.mock_cfn_client.list_stack_resources.return_value = {
             'StackResourceSummaries': stack_resources
@@ -166,23 +177,22 @@ class TestStackAnalyzer(unittest.TestCase):
         """Test analyzing a CloudFormation stack with an error."""
         # Setup mock to raise an exception
         stack_name = 'test-stack'
-        
+
         # Use your custom ClientError class
         error_msg = 'Stack with id test-stack does not exist'
         self.mock_cfn_client.describe_stacks.side_effect = ClientError(error_msg)
-        
+
         # Call the method
         result = self.stack_analyzer.analyze_stack(stack_name)
-        
+
         # Verify the result contains an error
         self.assertIn('error', result)
         # Check that the error message matches
         self.assertIn(error_msg, result['error'])
-        
-        
+
         # Call the method
         result = self.stack_analyzer.analyze_stack(stack_name)
-        
+
         # Verify the result contains an error
         self.assertIn('error', result)
         # The exact error message might vary, so check for a substring
@@ -192,7 +202,7 @@ class TestStackAnalyzer(unittest.TestCase):
         """Test analyzing unmanaged resources."""
         # Call the method
         result = self.stack_analyzer.analyze_unmanaged_resources()
-        
+
         # Verify the result
         self.assertIn('message', result)
         self.assertEqual(result['message'], 'Unmanaged resource analysis not implemented yet')
