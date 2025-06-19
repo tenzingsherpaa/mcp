@@ -17,6 +17,7 @@ import pytest
 from awslabs.cfn_mcp_server.context import Context
 from awslabs.cfn_mcp_server.errors import ClientError
 from awslabs.cfn_mcp_server.server import (
+    analyze_stack,
     create_resource,
     create_template,
     delete_resource,
@@ -318,3 +319,64 @@ class TestTools:
 
         # Verify the implementation was called with the correct parameters
         mock_create_template_impl.assert_called_once()
+
+    """Test cases for the CloudFormation Stack Analysis MCP Server."""
+
+    @patch('awslabs.cfn_mcp_server.server.StackAnalyzer')
+    async def test_analyze_stack_success(self, mock_stack_analyzer_class):
+        """Test analyze_stack with successful stack analysis."""
+        # Mock the StackAnalyzer instance
+        mock_analyzer = MagicMock()
+        mock_stack_analyzer_class.return_value = mock_analyzer
+
+        # Mock the get_best_cfn_practices method
+        mock_stack_analyzer_class.get_best_cfn_practices.return_value = {
+            'resource_management': 'Manage all stack resources through CloudFormation.',
+            'stack_policies': 'Use stack policies to prevent unintentional updates.',
+        }
+
+        # Mock the analyze_stack method
+        mock_analyzer.analyze_stack.return_value = {
+            'stack_info': {
+                'StackName': 'test-stack',
+                'StackStatus': 'CREATE_COMPLETE',
+                'CreationTime': '2023-01-01T00:00:00Z',
+                'LastUpdatedTime': '2023-01-02T00:00:00Z',
+            },
+            'resources': [{'LogicalResourceId': 'MyBucket', 'ResourceType': 'AWS::S3::Bucket'}],
+            'resource_count': 1,
+            'stack_status': 'CREATE_COMPLETE',
+            'creation_time': '2023-01-01T00:00:00Z',
+            'last_updated_time': '2023-01-02T00:00:00Z',
+            'outputs': [],
+            'parameters': [],
+            'tags': [],
+        }
+
+        # Call the function
+        result = await analyze_stack(stack_name='test-stack', region='us-east-1')
+
+        # Verify the StackAnalyzer was created with the correct region
+        mock_stack_analyzer_class.assert_called_once_with('us-east-1')
+
+        # Verify analyze_stack was called with the correct stack name
+        mock_analyzer.analyze_stack.assert_called_once_with('test-stack')
+
+        # Verify the result structure
+        assert result['stack_analysis']['name'] == 'test-stack'
+        assert result['stack_analysis']['region'] == 'us-east-1'
+        assert result['stack_analysis']['status'] == 'CREATE_COMPLETE'
+        assert result['stack_analysis']['creation_time'] == '2023-01-01T00:00:00Z'
+        assert result['stack_analysis']['last_updated_time'] == '2023-01-02T00:00:00Z'
+        assert result['stack_analysis']['resource_count'] == 1
+
+        # Verify resources section
+        assert 'managed_by_stack' in result['resources']
+        assert 'related_unmanaged' in result['resources']
+        assert 'related_in_other_stacks' in result['resources']
+
+        # Verify best practices section
+        assert 'recommendations' in result['best_practices']
+        assert len(result['best_practices']['recommendations']) == 2
+        assert result['best_practices']['recommendations'][0]['category'] == 'resource_management'
+        assert result['best_practices']['recommendations'][1]['category'] == 'stack_policies'
