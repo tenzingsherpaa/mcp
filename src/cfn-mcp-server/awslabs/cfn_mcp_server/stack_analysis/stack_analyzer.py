@@ -14,8 +14,8 @@
 
 
 import logging
-from awslabs.cfn_mcp_server.aws_client import get_aws_client
-from typing import Any, Dict, List
+from awslabs.cfn_mcp_server.stack_analysis.cloud_formation_utils import CloudFormationUtils
+from typing import Any, Dict
 
 
 logger = logging.getLogger(__name__)
@@ -38,15 +38,6 @@ class StackAnalyzer:
         'common_components': 'Extract common components into reusable templates or modules. This promotes consistency and reduces duplication across your infrastructure.',
     }
 
-    def __init__(self, region: str):
-        """Initialize the StackAnalyzer with the specified region.
-
-        Args:
-            region: The AWS region to use for API calls.
-        """
-        self.region = region
-        self.cfn_client = get_aws_client('cloudformation', region)
-
     @classmethod
     def get_best_cfn_practices(cls) -> Dict[str, str]:
         """Get CloudFormation best practices.
@@ -56,50 +47,16 @@ class StackAnalyzer:
         """
         return cls._CF_BEST_PRACTICES
 
-    # Cloudformation API's Access point: Helper methods
-    def list_stacks(self) -> List[Dict[str, Any]]:
-        """List CloudFormation stacks in the AWS account.
-
-        Returns:
-            List of stacks
-        """
-        response = self.cfn_client.list_stacks()
-        return response.get('StackSummaries', [])
-
-    def describe_stack(self, stack_name: str) -> Dict[str, Any]:
-        """Describe a CloudFormation stack.
+    def __init__(self, region: str):
+        """Initialize the StackAnalyzer with the specified region.
 
         Args:
-            stack_name: Name of the stack to describe
-
-        Returns:
-            Stack description
+            region: The AWS region to use for API calls.
         """
-        response = self.cfn_client.describe_stacks(StackName=stack_name)
-        return response.get('Stacks', [{}])[0]
+        self.region = region
+        self.cfn_utils = CloudFormationUtils(region)
 
-    def list_stack_resources(self, stack_name: str) -> List[Dict[str, Any]]:
-        """List resources in a CloudFormation stack.
-
-        Args:
-            stack_name: Name of the stack
-        Returns:
-            List of stack resources
-        """
-        response = self.cfn_client.list_stack_resources(StackName=stack_name)
-        return response.get('StackResourceSummaries', [])
-
-    def get_stack_template(self, stack_name: str) -> Dict[str, Any]:
-        """Get the template for a CloudFormation stack.
-
-        Args:
-            stack_name: Name of the stack
-
-        Returns:
-            Dict containing the stack template
-        """
-        response = self.cfn_client.get_template(StackName=stack_name)
-        return response.get('TemplateBody', {})
+    """" Start of the Stack Analysis Algorithm """
 
     def analyze_stack(self, stack_name: str) -> Dict[str, Any]:
         """Analyze a CloudFormation stack.
@@ -112,10 +69,10 @@ class StackAnalyzer:
         """
         try:
             # Get stack details
-            stack_details = self.describe_stack(stack_name)
+            stack_details = self.cfn_utils.describe_stack(stack_name)
 
             # Get stack resources
-            stack_resources = self.list_stack_resources(stack_name)
+            stack_resources = self.cfn_utils.list_stack_resources(stack_name)
 
             # Basic analysis
             analysis = {
