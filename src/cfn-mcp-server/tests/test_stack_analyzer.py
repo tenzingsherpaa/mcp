@@ -120,5 +120,5 @@ class TestStackAnalyzerAsync:
             mock_cfn_client = MagicMock()
             mock_get_aws_client.return_value = mock_cfn_client
             analyzer = StackAnalyzer(region='us-east-1')
-            analyzer.cfn_client = mock_cfn_client
+            analyzer._cfn_client = mock_cfn_client
             yield analyzer

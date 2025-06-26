@@ -25,9 +25,10 @@ class CloudFormationUtils:
     """Utility class for CloudFormation API operations."""
 
     def __init__(self, region: Optional[str] = None):
+        """Initialize the CloudFormationUtils with the specified AWS region and store the resource scan ID."""
         self.region = region
         self._cfn_client = None
-        self.resource_scan_id = None
+        self.resource_scan_id: Optional[str] = None
 
     @property
     def cfn_client(self):
@@ -116,7 +117,7 @@ class CloudFormationUtils:
             logger.error(f'Error starting resource scan: {str(e)}')
             raise handle_aws_api_error(e)
 
-    def get_resource_scan_status(self, scan_id: str = None) -> Dict[str, Any]:
+    def get_resource_scan_status(self, scan_id: Optional[str] = None) -> Dict[str, Any]:
         """Get the status of a resource scan.
 
         Args:
@@ -125,18 +126,18 @@ class CloudFormationUtils:
         Returns:
             Resource scan status information
         """
-        scan_id = scan_id or self.resource_scan_id
-        if not scan_id:
+        effective_scan_id: str = scan_id or self.resource_scan_id
+        if not effective_scan_id:
             raise ClientError('No resource scan ID available')
 
         try:
-            response = self.cfn_client.describe_resource_scan(ResourceScanId=scan_id)
+            response = self.cfn_client.describe_resource_scan(ResourceScanId=effective_scan_id)
             return response
         except Exception as e:
             logger.error(f'Error getting resource scan status: {str(e)}')
             raise handle_aws_api_error(e)
 
-    def list_resource_scan_resources(self, scan_id: str = None) -> List[Dict[str, Any]]:
+    def list_resource_scan_resources(self, scan_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """List all resources found in the resource scan.
 
         Args:
@@ -145,16 +146,16 @@ class CloudFormationUtils:
         Returns:
             List of all resources found in the scan
         """
-        scan_id = scan_id or self.resource_scan_id
-        if not scan_id:
+        effective_scan_id: str = scan_id or self.resource_scan_id
+        if not effective_scan_id:
             raise ClientError('No resource scan ID available')
 
         try:
-            logger.info(f'Listing resources from scan {scan_id}')
+            logger.info(f'Listing resources from scan {effective_scan_id}')
 
             # Use paginator to handle large result sets
             paginator = self.cfn_client.get_paginator('list_resource_scan_resources')
-            page_iterator = paginator.paginate(ResourceScanId=scan_id)
+            page_iterator = paginator.paginate(ResourceScanId=effective_scan_id)
 
             all_resources = []
             for page in page_iterator:
