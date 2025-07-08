@@ -437,64 +437,116 @@ async def analyze_stack(
     Returns:
         Detailed information about the stack and its resources in three distinct sections:
         1. Resources in the given stack
-        2. Related resources that are not managed by CloudFormation
-        3. Related resources that are managed by different stacks
-        The output is formatted with clear section dividers for readability.
+        2. Performs analysis on stack resources against a resource scan
+        3. Related resources that are not managed by CloudFormation
+        4. Related resources that are managed by different stacks
+
+    Raises:
+        ClientError: If the stack name is not provided or if the stack does not exist in the specified region.
+        ClientError: If there is an error during the analysis process.
+
     """
     if not stack_name:
         raise ClientError('Please provide a stack name')
 
-    # Use default region if not specified
-    if not region:
-        # You might want to get this from environment or config
-        region = 'us-east-1'
-
     try:
         # Initialize the stack analyzer
-        analyzer = StackAnalyzer(region)
+        analyzer = StackAnalyzer(region or 'us-east-1')  # Provide a default region
 
         # Get stack analysis
         stack_analysis = analyzer.analyze_stack(stack_name)
 
+        # Check if there was an error in the analysis
+        if 'error' in stack_analysis:
+            error_message = stack_analysis['error']
+            if 'not found' in error_message.lower() or 'does not exist' in error_message.lower():
+                raise ClientError(
+                    f'Stack "{stack_name}" was not found. Please check the stack name and region.'
+                )
+            else:
+                raise ClientError(error_message)
         # Get best practices
         best_practices = StackAnalyzer.get_best_cfn_practices()
 
-        # Format the response
+        # Extract the resources data for better structure
+        resources_data = stack_analysis.get('resources', {})
+        related_resources = stack_analysis.get('related_resources', [])
+
+        # Enhance related resources with summary for better Q analysis
+        related_resources_summary = {
+            'total_count': len(related_resources),
+            'resource_types': {},
+            'sample_resources': related_resources if related_resources else [],
+            'description': 'Resources that are related to stack resources but not managed by this stack',
+        }
+
+        # Categorize related resources by type
+        for resource in related_resources:
+            resource_type = resource.get('ResourceType', 'Unknown')
+            if resource_type not in related_resources_summary['resource_types']:
+                related_resources_summary['resource_types'][resource_type] = 0
+            related_resources_summary['resource_types'][resource_type] += 1
+
         result = {
-            'stack_analysis': {
-                'name': stack_name,
-                'region': region,
-                'status': stack_analysis.get('stack_status'),
-                'creation_time': stack_analysis.get('creation_time'),
-                'last_updated_time': stack_analysis.get('last_updated_time'),
-                'resource_count': stack_analysis.get('resource_count'),
-            },
-            'resources': {
-                'managed_by_stack': stack_analysis.get('resources'),
-                'related_unmanaged': {
-                    'message': 'Analysis of unmanaged resources not implemented yet'
+            'stack_info': stack_analysis.get('stack_info'),
+            'stack_status': stack_analysis.get('stack_status'),
+            'creation_time': stack_analysis.get('creation_time'),
+            'last_updated_time': stack_analysis.get('last_updated_time'),
+            'outputs': stack_analysis.get('outputs', []),
+            'parameters': stack_analysis.get('parameters', []),
+            # Stack resource matching results
+            'stack_name': resources_data.get('stack_name'),
+            'resource_scan_id': resources_data.get('resource_scan_id'),
+            'matched_resources': resources_data.get('matched_resources', []),
+            'unmatched_resources': resources_data.get('unmatched_resources', []),
+            # Enhanced related resources section for better Q analysis
+            'related_resources': related_resources,
+            'related_resources_summary': related_resources_summary,
+            # Account-wide resource summary
+            'account_summary': stack_analysis.get('account_summary', {}),
+            'best_practices': best_practices,
+            # Analysis highlights for Q to focus on
+            'analysis_highlights': {
+                'stack_resources': {
+                    'total_in_stack': len(resources_data.get('matched_resources', []))
+                    + len(resources_data.get('unmatched_resources', [])),
+                    'matched_in_scan': len(resources_data.get('matched_resources', [])),
+                    'unmatched_in_scan': len(resources_data.get('unmatched_resources', [])),
+                    'match_percentage': round(
+                        (
+                            len(resources_data.get('matched_resources', []))
+                            / max(
+                                1,
+                                len(resources_data.get('matched_resources', []))
+                                + len(resources_data.get('unmatched_resources', [])),
+                            )
+                        )
+                        * 100,
+                        2,
+                    ),
                 },
-                'related_in_other_stacks': {
-                    'message': 'Analysis of resources in other stacks not implemented yet'
+                'related_resources': {
+                    'total_found': len(related_resources),
+                    'unique_types': len(related_resources_summary['resource_types']),
+                    'description': 'These are AWS resources that have relationships with your stack resources but are not directly managed by this CloudFormation stack',
                 },
-            },
-            'best_practices': {
-                'recommendations': [
-                    {
-                        'category': 'resource_management',
-                        'description': best_practices['resource_management'],
-                    },
-                    {
-                        'category': 'stack_policies',
-                        'description': best_practices['stack_policies'],
-                    },
-                ]
+                'account_overview': {
+                    'total_resources': stack_analysis.get('account_summary', {})
+                    .get('overall_summary', {})
+                    .get('total_resources', 0),
+                    'unmanaged_percentage': stack_analysis.get('account_summary', {})
+                    .get('overall_summary', {})
+                    .get('unmanaged_percentage', 0),
+                    'managed_percentage': stack_analysis.get('account_summary', {})
+                    .get('overall_summary', {})
+                    .get('managed_percentage', 0),
+                },
             },
         }
 
         return result
     except Exception as e:
-        raise ClientError(f'Error in analyze_stack: {str(e)}')
+        raise ClientError(f'Error analyzing stack "{stack_name}": {str(e)}')
 
 
 def main():

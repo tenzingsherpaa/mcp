@@ -73,9 +73,23 @@ class CloudFormationUtils:
 
         Returns:
             Stack description
+
+        Raises:
+            ClientError: If the stack doesn't exist or other API errors occur
         """
-        response = self.cfn_client.describe_stacks(StackName=stack_name)
-        return response.get('Stacks', [{}])[0]
+        try:
+            response = self.cfn_client.describe_stacks(StackName=stack_name)
+            stacks = response.get('Stacks', [])
+            if not stacks:
+                raise ClientError(f'Stack "{stack_name}" not found')
+            return stacks[0]
+        except Exception as e:
+            # Check if it's a stack not found error
+            error_code = getattr(e, 'response', {}).get('Error', {}).get('Code', '')
+            if error_code == 'ValidationError' or 'does not exist' in str(e):
+                raise ClientError(f'Stack "{stack_name}" not found')
+            else:
+                raise handle_aws_api_error(e)
 
     def list_stack_resources(self, stack_name: str) -> List[Dict[str, Any]]:
         """List resources in a CloudFormation stack.
@@ -101,7 +115,7 @@ class CloudFormationUtils:
         return response.get('TemplateBody', {})
 
     # Resource Scan API methods
-    def start_resource_scan(self) -> str:
+    def start_resource_scan(self) -> Optional[str]:
         """Start a new resource scan and return the scan ID.
 
         Returns:
@@ -110,12 +124,38 @@ class CloudFormationUtils:
         try:
             logger.info('Starting resource scan...')
             response = self.cfn_client.start_resource_scan()
-            scan_id: str = response['ResourceScanId']
-            self.resource_scan_id = scan_id
-            logger.info(f'Resource scan started with ID: {scan_id}')
-            return scan_id
+            self.resource_scan_id = response['ResourceScanId']
+            logger.info(f'Resource scan started with ID: {self.resource_scan_id}')
+            return self.resource_scan_id
         except Exception as e:
             logger.error(f'Error starting resource scan: {str(e)}')
+            raise handle_aws_api_error(e)
+
+    def list_resource_scans(self) -> List[Dict[str, Any]]:
+        """List all resource scans in chronological order (newest first).
+
+        Returns:
+            List of resource scans with their details
+        """
+        try:
+            logger.info('Listing resource scans...')
+
+            # Use paginator to handle large result sets
+            paginator = self.cfn_client.get_paginator('list_resource_scans')
+            page_iterator = paginator.paginate()
+
+            all_scans = []
+            for page in page_iterator:
+                # The correct key is 'ResourceScanSummaries', not 'ResourceScans'
+                scans = page.get('ResourceScanSummaries', [])
+                all_scans.extend(scans)
+                logger.debug(f'Retrieved {len(scans)} scans from page')
+
+            logger.info(f'Total resource scans found: {len(all_scans)}')
+            return all_scans
+
+        except Exception as e:
+            logger.error(f'Error listing resource scans: {str(e)}')
             raise handle_aws_api_error(e)
 
     def get_resource_scan_status(self, scan_id: Optional[str] = None) -> Dict[str, Any]:
@@ -127,11 +167,8 @@ class CloudFormationUtils:
         Returns:
             Resource scan status information
         """
-        if scan_id is not None:
-            effective_scan_id = scan_id
-        elif self.resource_scan_id is not None:
-            effective_scan_id = self.resource_scan_id
-        else:
+        effective_scan_id: Optional[str] = scan_id or self.resource_scan_id
+        if not effective_scan_id:
             raise ClientError('No resource scan ID available')
 
         try:
@@ -150,11 +187,8 @@ class CloudFormationUtils:
         Returns:
             List of all resources found in the scan
         """
-        if scan_id is not None:
-            effective_scan_id = scan_id
-        elif self.resource_scan_id is not None:
-            effective_scan_id = self.resource_scan_id
-        else:
+        effective_scan_id: Optional[str] = scan_id or self.resource_scan_id
+        if not effective_scan_id:
             raise ClientError('No resource scan ID available')
 
         try:
@@ -175,4 +209,49 @@ class CloudFormationUtils:
 
         except Exception as e:
             logger.error(f'Error listing resource scan resources: {str(e)}')
+            raise handle_aws_api_error(e)
+
+    def list_resource_scan_related_resources(
+        self, resources: List[Dict[str, Any]], scan_id: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """List related resources for the specified resources from a resource scan.
+
+        Args:
+            resources: List of resource identifiers to find related resources for.
+                      Each resource should have 'ResourceType' and 'ResourceIdentifier' keys.
+            scan_id: Resource scan ID (uses stored ID if not provided)
+
+        Returns:
+            List of related resources found in the scan
+        """
+        effective_scan_id: Optional[str] = scan_id or self.resource_scan_id
+        if not effective_scan_id:
+            raise ClientError('No resource scan ID available')
+
+        if not resources:
+            logger.warning('No resources provided for related resource lookup')
+            return []
+
+        try:
+            logger.info(
+                f'Finding related resources for {len(resources)} resources in scan {effective_scan_id}'
+            )
+
+            # Use paginator to handle large result sets
+            paginator = self.cfn_client.get_paginator('list_resource_scan_related_resources')
+            page_iterator = paginator.paginate(
+                ResourceScanId=effective_scan_id, Resources=resources
+            )
+
+            all_related_resources = []
+            for page in page_iterator:
+                related_resources = page.get('RelatedResources', [])
+                all_related_resources.extend(related_resources)
+                logger.debug(f'Retrieved {len(related_resources)} related resources from page')
+
+            logger.info(f'Total related resources found: {len(all_related_resources)}')
+            return all_related_resources
+
+        except Exception as e:
+            logger.error(f'Error listing resource scan related resources: {str(e)}')
             raise handle_aws_api_error(e)

@@ -335,7 +335,7 @@ class TestTools:
             'stack_policies': 'Use stack policies to prevent unintentional updates.',
         }
 
-        # Mock the analyze_stack method
+        # Mock the analyze_stack method with the new structure
         mock_analyzer.analyze_stack.return_value = {
             'stack_info': {
                 'StackName': 'test-stack',
@@ -343,14 +343,42 @@ class TestTools:
                 'CreationTime': '2023-01-01T00:00:00Z',
                 'LastUpdatedTime': '2023-01-02T00:00:00Z',
             },
-            'resources': [{'LogicalResourceId': 'MyBucket', 'ResourceType': 'AWS::S3::Bucket'}],
-            'resource_count': 1,
             'stack_status': 'CREATE_COMPLETE',
             'creation_time': '2023-01-01T00:00:00Z',
             'last_updated_time': '2023-01-02T00:00:00Z',
-            'outputs': [],
-            'parameters': [],
-            'tags': [],
+            'outputs': [{'OutputKey': 'BucketName', 'OutputValue': 'test-bucket'}],
+            'parameters': [{'ParameterKey': 'Environment', 'ParameterValue': 'test'}],
+            'resources': {
+                'stack_name': 'test-stack',
+                'resource_scan_id': 'test-scan-id',
+                'matched_resources': [
+                    {
+                        'logical_resource_id': 'MyBucket',
+                        'physical_resource_id': 'test-bucket',
+                        'resource_type': 'AWS::S3::Bucket',
+                        'resource_status': 'CREATE_COMPLETE',
+                        'matched': True,
+                        'resource_identifier': {'BucketName': 'test-bucket'},
+                    }
+                ],
+                'unmatched_resources': [],
+            },
+            'related_resources': [
+                {
+                    'ResourceType': 'AWS::IAM::Role',
+                    'ResourceIdentifier': {'RoleName': 'test-role'},
+                    'ManagedByStack': False,
+                }
+            ],
+            'account_summary': {
+                'overall_summary': {
+                    'total_resources': 100,
+                    'managed_resources': 80,
+                    'unmanaged_resources': 20,
+                    'managed_percentage': 80.0,
+                    'unmanaged_percentage': 20.0,
+                }
+            },
         }
 
         # Call the function
@@ -362,21 +390,41 @@ class TestTools:
         # Verify analyze_stack was called with the correct stack name
         mock_analyzer.analyze_stack.assert_called_once_with('test-stack')
 
-        # Verify the result structure
-        assert result['stack_analysis']['name'] == 'test-stack'
-        assert result['stack_analysis']['region'] == 'us-east-1'
-        assert result['stack_analysis']['status'] == 'CREATE_COMPLETE'
-        assert result['stack_analysis']['creation_time'] == '2023-01-01T00:00:00Z'
-        assert result['stack_analysis']['last_updated_time'] == '2023-01-02T00:00:00Z'
-        assert result['stack_analysis']['resource_count'] == 1
+        # Verify the result structure matches the new implementation
+        assert result['stack_info']['StackName'] == 'test-stack'
+        assert result['stack_status'] == 'CREATE_COMPLETE'
+        assert result['creation_time'] == '2023-01-01T00:00:00Z'
+        assert result['last_updated_time'] == '2023-01-02T00:00:00Z'
+        assert result['outputs'] == [{'OutputKey': 'BucketName', 'OutputValue': 'test-bucket'}]
+        assert result['parameters'] == [{'ParameterKey': 'Environment', 'ParameterValue': 'test'}]
 
-        # Verify resources section
-        assert 'managed_by_stack' in result['resources']
-        assert 'related_unmanaged' in result['resources']
-        assert 'related_in_other_stacks' in result['resources']
+        # Verify stack name and resource scan ID
+        assert result['stack_name'] == 'test-stack'
+        assert result['resource_scan_id'] == 'test-scan-id'
 
-        # Verify best practices section
-        assert 'recommendations' in result['best_practices']
-        assert len(result['best_practices']['recommendations']) == 2
-        assert result['best_practices']['recommendations'][0]['category'] == 'resource_management'
-        assert result['best_practices']['recommendations'][1]['category'] == 'stack_policies'
+        # Verify matched and unmatched resources
+        assert len(result['matched_resources']) == 1
+        assert result['matched_resources'][0]['logical_resource_id'] == 'MyBucket'
+        assert len(result['unmatched_resources']) == 0
+
+        # Verify related resources
+        assert len(result['related_resources']) == 1
+        assert result['related_resources'][0]['ResourceType'] == 'AWS::IAM::Role'
+
+        # Verify related resources summary
+        assert result['related_resources_summary']['total_count'] == 1
+        assert 'AWS::IAM::Role' in result['related_resources_summary']['resource_types']
+
+        # Verify account summary
+        assert result['account_summary']['overall_summary']['total_resources'] == 100
+        assert result['account_summary']['overall_summary']['managed_percentage'] == 80.0
+
+        # Verify best practices
+        assert 'resource_management' in result['best_practices']
+        assert 'stack_policies' in result['best_practices']
+
+        # Verify analysis highlights
+        assert result['analysis_highlights']['stack_resources']['total_in_stack'] == 1
+        assert result['analysis_highlights']['stack_resources']['matched_in_scan'] == 1
+        assert result['analysis_highlights']['related_resources']['total_found'] == 1
+        assert result['analysis_highlights']['account_overview']['total_resources'] == 100
