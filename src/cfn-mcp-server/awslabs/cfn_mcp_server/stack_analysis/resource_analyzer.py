@@ -14,7 +14,7 @@
 
 import logging
 from awslabs.cfn_mcp_server.errors import ServerError
-from awslabs.cfn_mcp_server.stack_analysis.cloud_formation_utils import CloudFormationUtils
+from awslabs.cfn_mcp_server.stack_analysis.cloudformation_utils import CloudFormationUtils
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
@@ -59,7 +59,7 @@ class ResourceAnalyzer:
 
     def __init__(self, region: Optional[str] = None):
         """Initializes the ResourceMatcher."""
-        self.cf_utils = CloudFormationUtils(region)
+        self.cfn_utils = CloudFormationUtils(region)
         self.stack_resources = {}  # physical_id -> StackResourceInfo
         self.scanned_resources_by_id = {}  # physical_id -> list of matching resources
 
@@ -80,27 +80,24 @@ class ResourceAnalyzer:
         try:
             # Set resource scan ID if provided
             if resource_scan_id:
-                self.cf_utils.resource_scan_id = resource_scan_id
+                self.cfn_utils.resource_scan_id = resource_scan_id
 
             # Get stack resources from CloudFormation API (list-stack-resources)
-            stack_resources_data = self.cf_utils.list_stack_resources(stack_name)
+            stack_resources_data = self.cfn_utils.list_stack_resources(stack_name)
             logger.info(f'Found {len(stack_resources_data)} resources in stack')
 
             # Ensure we have a resource scan ID - use latest existing scan
-            if not self.cf_utils.resource_scan_id:
+            if not self.cfn_utils.resource_scan_id:
                 logger.info('No resource scan ID provided, looking for latest scan...')
                 try:
-                    scans = self.cf_utils.list_resource_scans()
+                    scans = self.cfn_utils.list_resource_scans()
                     if scans and len(scans) > 0:
                         # Assuming scans are returned in chronological order, get latest
                         latest_scan = scans[0]
-                        self.cf_utils.resource_scan_id = latest_scan.get('ResourceScanId')
+                        self.cfn_utils.resource_scan_id = latest_scan.get('ResourceScanId')
                         logger.info(
-                            f'Using latest resource scan with ID: {self.cf_utils.resource_scan_id}'
+                            f'Using latest resource scan with ID: {self.cfn_utils.resource_scan_id}'
                         )
-                    else:
-                        logger.error('No existing resource scans found')
-                        return {'error': 'No existing resource scans available'}
                 except ServerError as e:
                     logger.error(f'Failed to get latest resource scan: {str(e)}')
                     return {
@@ -113,14 +110,14 @@ class ResourceAnalyzer:
 
             # Get scanned resources from Resource Scan API (list-resource-scan-resources)
             try:
-                scanned_resources_data = self.cf_utils.list_resource_scan_resources()
+                scanned_resources_data = self.cfn_utils.list_resource_scan_resources()
                 logger.info(f'Found {len(scanned_resources_data)} resources in scan')
             except ServerError as e:
                 logger.error(f'Error listing scanned resources: {str(e)}')
                 # Return basic analysis without scan data
                 return {
                     'stack_name': stack_name,
-                    'resource_scan_id': self.cf_utils.resource_scan_id,
+                    'resource_scan_id': self.cfn_utils.resource_scan_id,
                     'matched_resources': [],
                     'unmatched_resources': [],
                     'error': f'Unable to list scanned resources: {str(e)}',
@@ -130,19 +127,22 @@ class ResourceAnalyzer:
             self._process_stack_resources(stack_resources_data)
             self._process_scanned_resources(scanned_resources_data)
 
+            # Get resources using the new combined method
+            resources = self._get_resources()
+
             # Return matching results
             return {
                 'stack_name': stack_name,
-                'resource_scan_id': self.cf_utils.resource_scan_id,
-                'matched_resources': self._get_matched_resources(),
-                'unmatched_resources': self._get_unmatched_resources(),
+                'resource_scan_id': self.cfn_utils.resource_scan_id,
+                'matched_resources': resources['matched_resources'],
+                'unmatched_resources': resources['unmatched_resources'],
             }
 
         except ServerError as e:
             logger.error(f'Error in match_stack_to_scan: {str(e)}')
             return {
                 'stack_name': stack_name,
-                'resource_scan_id': self.cf_utils.resource_scan_id,
+                'resource_scan_id': self.cfn_utils.resource_scan_id,
                 'matched_resources': [],
                 'unmatched_resources': [],
                 'error': str(e),
@@ -169,15 +169,15 @@ class ResourceAnalyzer:
         try:
             # Set resource scan ID if provided
             if resource_scan_id:
-                self.cf_utils.resource_scan_id = resource_scan_id
+                self.cfn_utils.resource_scan_id = resource_scan_id
 
             # Ensure we have a resource scan ID
-            if not self.cf_utils.resource_scan_id:
+            if not self.cfn_utils.resource_scan_id:
                 logger.warning('No resource scan ID available for related resources lookup')
                 return []
 
             # Call the CloudFormation utils method
-            related_resources = self.cf_utils.list_resource_scan_related_resources(
+            related_resources = self.cfn_utils.list_resource_scan_related_resources(
                 resources, resource_scan_id
             )
             logger.info(f'Found {len(related_resources)} related resources')
@@ -187,15 +187,19 @@ class ResourceAnalyzer:
             logger.error(f'Error getting related resources: {str(e)}')
             return []
 
-    # Method to get matched resources
-    # Returns a list of ResourceMatchResult objects for matched resources (ResourceMatchResult type)
-    def _get_matched_resources(self) -> List[ResourceMatchResult]:
-        """Get matched resources as a list of ResourceMatchResult objects."""
-        matched = []
+    def _get_resources(self) -> Dict[str, List[ResourceMatchResult]]:
+        """Get both matched and unmatched resources as lists of ResourceMatchResult objects.
 
+        Returns:
+            Dictionary containing matched and unmatched resources
+        """
+        matched = []
+        unmatched = []
+
+        # Process all stack resources in a single loop
         for physical_id, stack_resource in self.stack_resources.items():
             if physical_id in self.scanned_resources_by_id:
-                # Get the matching scanned resource
+                # Resource is matched - create a matched ResourceMatchResult
                 scanned_resource = self.scanned_resources_by_id[physical_id]
 
                 result = ResourceMatchResult(
@@ -204,22 +208,13 @@ class ResourceAnalyzer:
                     logical_resource_id=stack_resource.logical_resource_id,
                     physical_resource_id=stack_resource.physical_resource_id,
                     resource_status=stack_resource.resource_status,
-                    # Using the first scanned resource match ()
                     resource_identifier=scanned_resource[0].resource_identifier,
                     managed_by_stack_input=scanned_resource[0].managed_by_stack_input,
                     scanned_resource_type=scanned_resource[0].scanned_resource_type,
                 )
                 matched.append(result)
-        return matched
-
-    # Method to get unmatched resources
-    # This will return a list of ResourceMatchResult objects for unmatched resources (ResourceMatchResult type)
-    def _get_unmatched_resources(self) -> List[ResourceMatchResult]:
-        """Get unmatched resources as a list of ResourceMatchResult objects."""
-        unmatched = []
-
-        for physical_id, stack_resource in self.stack_resources.items():
-            if physical_id not in self.scanned_resources_by_id:
+            else:
+                # Resource is unmatched - create an unmatched ResourceMatchResult
                 result = ResourceMatchResult(
                     matched=False,
                     resource_type=stack_resource.resource_type,
@@ -232,7 +227,7 @@ class ResourceAnalyzer:
                 )
                 unmatched.append(result)
 
-        return unmatched
+        return {'matched_resources': matched, 'unmatched_resources': unmatched}
 
     def _process_stack_resources(self, stack_resources_data: List[Dict[str, Any]]):
         """Process stack resources and store them in a dictionary."""

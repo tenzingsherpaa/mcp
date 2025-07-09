@@ -15,7 +15,7 @@
 
 import logging
 from awslabs.cfn_mcp_server.errors import ClientError, ServerError
-from awslabs.cfn_mcp_server.stack_analysis.cloud_formation_utils import CloudFormationUtils
+from awslabs.cfn_mcp_server.stack_analysis.cloudformation_utils import CloudFormationUtils
 from awslabs.cfn_mcp_server.stack_analysis.resource_analyzer import ResourceAnalyzer
 from typing import Any, Dict
 

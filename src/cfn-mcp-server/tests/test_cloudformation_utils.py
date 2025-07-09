@@ -1,13 +1,13 @@
 import unittest
 from awslabs.cfn_mcp_server.errors import ClientError
-from awslabs.cfn_mcp_server.stack_analysis.cloud_formation_utils import CloudFormationUtils
+from awslabs.cfn_mcp_server.stack_analysis.cloudformation_utils import CloudFormationUtils
 from unittest.mock import MagicMock, patch
 
 
 class TestCloudFormationUtils(unittest.TestCase):
     """Tests for the CloudFormationUtils class."""
 
-    @patch('awslabs.cfn_mcp_server.stack_analysis.cloud_formation_utils.get_aws_client')
+    @patch('awslabs.cfn_mcp_server.stack_analysis.cloudformation_utils.get_aws_client')
     def setUp(self, mock_get_aws_client):
         """Set up each test."""
         self.mock_cfn_client = MagicMock()
