@@ -67,6 +67,20 @@ def handle_aws_api_error(e: Exception) -> Exception:
         return ServerError('Internal failure. The server failed to process the request.')
     elif 'ServiceUnavailable' in error_message or error_type == 'ServiceUnavailable':
         return ServerError('Service unavailable. The server failed to process the request.')
+    elif (
+        'ResourceScanInProgressException' in error_message
+        or error_type == 'ResourceScanInProgressException'
+    ):
+        return ClientError(
+            'Resource scan is already in progress. Please wait for the current scan to complete before starting a new one.'
+        )
+    elif (
+        'ResourceScanLimitExceededException' in error_message
+        or error_type == 'ResourceScanLimitExceededException'
+    ):
+        return ClientError(
+            'Resource scan limit exceeded. You have reached the maximum number of concurrent resource scans allowed.'
+        )
     else:
         # Generic error handling - we might shift to this for everything eventually since it gives more context to the LLM, will have to test
         return ClientError(f'An error occurred: {error_message}')
@@ -80,6 +94,17 @@ class ClientError(Exception):
         # Call the base class constructor with the parameters it needs
         super().__init__(message)
         self.type = 'client'
+        self.message = message
+
+
+class PromptUser(Exception):
+    """An error that indicates that the user needs to provide additional information or input."""
+
+    def __init__(self, message):
+        """Call super and set message."""
+        # Call the base class constructor with the parameters it needs
+        super().__init__(message)
+        self.type = 'prompt_user'
         self.message = message
 
 
