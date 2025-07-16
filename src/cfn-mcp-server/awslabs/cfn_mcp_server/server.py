@@ -424,18 +424,18 @@ async def create_template(
 
 @mcp.tool()
 async def start_resource_scan(
-    resource_type: list | None = Field(
+    resource_types: list | None = Field(
         default=None,
-        description='The AWS resource type to scan (e.g., "AWS::S3::Bucket", "AWS::RDS::DBInstance")',
+        description='The AWS resource types to scan (e.g., "AWS::S3::Bucket", "AWS::RDS::DBInstance")',
     ),
     region: str | None = Field(
         description='The AWS region that the operation should be performed in', default=None
     ),
 ) -> dict:
-    """Start a resource scan for a specific AWS resource type or the entire account.
+    """Start a resource scan for a specific AWS resource types or the entire account.
 
     Parameters:
-        resource_type: The AWS resource type to scan (e.g., "AWS::S3::Bucket", "AWS::EC2::*", or a list of resource types)
+        resource_type: The AWS resource types to scan (e.g., "AWS::S3::Bucket", "AWS::EC2::*", or a list of resource types)
         Provide an empty list [] to scan the entire account
         region: AWS region to use (e.g., "us-east-1", "us-west-2")
 
@@ -446,7 +446,7 @@ async def start_resource_scan(
         }
     """
     # Prompt user for input if no resource type is provided
-    if resource_type is None:
+    if resource_types is None:
         common_resource_types = [
             'AWS::S3::Bucket',
             'AWS::EC2::Instance',
@@ -473,7 +473,7 @@ async def start_resource_scan(
         raise handle_aws_api_error(e)
 
     try:
-        scan_id = cfn_utils.start_resource_scan(resource_type)
+        scan_id = cfn_utils.start_resource_scan(resource_types)
         return {
             'scan_id': scan_id,
         }
