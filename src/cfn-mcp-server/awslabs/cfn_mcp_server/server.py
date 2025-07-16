@@ -19,9 +19,10 @@ import json
 from awslabs.cfn_mcp_server.aws_client import get_aws_client
 from awslabs.cfn_mcp_server.cloud_control_utils import progress_event, validate_patch
 from awslabs.cfn_mcp_server.context import Context
-from awslabs.cfn_mcp_server.errors import ClientError, handle_aws_api_error
+from awslabs.cfn_mcp_server.errors import ClientError, PromptUser, handle_aws_api_error
 from awslabs.cfn_mcp_server.iac_generator import create_template as create_template_impl
 from awslabs.cfn_mcp_server.schema_manager import schema_manager
+from awslabs.cfn_mcp_server.stack_analysis.cloudformation_utils import CloudFormationUtils
 from awslabs.cfn_mcp_server.stack_analysis.stack_analyzer import StackAnalyzer
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
@@ -419,6 +420,65 @@ async def create_template(
         save_to_file=save_to_file,
         region_name=region,
     )
+
+
+@mcp.tool()
+async def start_resource_scan(
+    resource_type: list | None = Field(
+        default=None,
+        description='The AWS resource type to scan (e.g., "AWS::S3::Bucket", "AWS::RDS::DBInstance")',
+    ),
+    region: str | None = Field(
+        description='The AWS region that the operation should be performed in', default=None
+    ),
+) -> dict:
+    """Start a resource scan for a specific AWS resource type or the entire account.
+
+    Parameters:
+        resource_type: The AWS resource type to scan (e.g., "AWS::S3::Bucket" or a list of resource types)
+                      Leave empty or None to scan the entire account
+        region: AWS region to use (e.g., "us-east-1", "us-west-2")
+
+    Returns:
+        Information about the started scan with a consistent structure:
+        {
+            "scan_id": The unique identifier for the started scan
+        }
+    """
+    # Prompt user for input if no resource type is provided
+    if resource_type is None:
+        common_resource_types = [
+            'AWS::S3::Bucket',
+            'AWS::EC2::Instance',
+            'AWS::RDS::DBInstance',
+            'AWS::Lambda::Function',
+            'AWS::IAM::Role',
+        ]
+
+        raise PromptUser(
+            'Please specify resource types to scan. Options:\n\n'
+            '1. Provide specific resource types)\n'
+            '2. Provide an empty list [] to scan the entire account\n\n'
+            'Common resource types include:\n'
+            + '\n'.join([f'- {rt}' for rt in common_resource_types])
+            + f'\n\nExample usage:\n'
+            f'- Single resource type: ["AWS::S3::Bucket"]\n'
+            f'- Multiple types: {common_resource_types}\n'
+            f'- Entire account: []'
+        )
+
+    try:
+        cfn_utils = CloudFormationUtils(region=region or 'us-east-1')
+    except Exception as e:
+        raise handle_aws_api_error(e)
+
+    try:
+        scan_id = cfn_utils.start_resource_scan(resource_type)
+        return {
+            'scan_id': scan_id,
+        }
+    except Exception as e:
+        raise handle_aws_api_error(e)
 
 
 @mcp.tool()
