@@ -14,7 +14,7 @@
 
 import logging
 from awslabs.cfn_mcp_server.aws_client import get_aws_client
-from awslabs.cfn_mcp_server.errors import ClientError, handle_aws_api_error
+from awslabs.cfn_mcp_server.errors import ClientError, ServerError, handle_aws_api_error
 from typing import Any, Dict, List, Optional
 
 
@@ -115,7 +115,7 @@ class CloudFormationUtils:
         return response.get('TemplateBody', {})
 
     # Resource Scan API methods
-    def start_resource_scan(self, resource_type: Optional[List] = None) -> str:
+    def start_resource_scan(self, resource_types: Optional[List] = None) -> str:
         """Start a new resource scan and return the scan ID.
 
         Returns:
@@ -123,19 +123,19 @@ class CloudFormationUtils:
         """
         try:
             logger.info('Starting resource scan...')
-            logger.info(f'Received resource_type: {resource_type} (type: {type(resource_type)})')
+            logger.info(f'Received resource_type: {resource_types} (type: {type(resource_types)})')
 
-            if resource_type and len(resource_type) > 0:
-                logger.info(f'Starting resource scan with filters: {resource_type}')
+            if resource_types and len(resource_types) > 0:
+                logger.info(f'Starting resource scan with filters: {resource_types}')
                 response = self.cfn_client.start_resource_scan(
-                    ScanFilters=[{'Types': resource_type}]
+                    ScanFilters=[{'Types': resource_types}]
                 )
             else:
                 response = self.cfn_client.start_resource_scan()
 
             scan_id = response['ResourceScanId']
             if not scan_id:
-                raise ClientError('Resource scan ID not returned by AWS API')
+                raise ServerError('Resource scan ID not returned by AWS API')
 
             self.resource_scan_id = scan_id
             logger.info(f'Resource scan started with ID: {self.resource_scan_id}')

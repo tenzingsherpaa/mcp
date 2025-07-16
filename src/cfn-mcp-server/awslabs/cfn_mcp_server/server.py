@@ -435,8 +435,8 @@ async def start_resource_scan(
     """Start a resource scan for a specific AWS resource type or the entire account.
 
     Parameters:
-        resource_type: The AWS resource type to scan (e.g., "AWS::S3::Bucket" or a list of resource types)
-                      Leave empty or None to scan the entire account
+        resource_type: The AWS resource type to scan (e.g., "AWS::S3::Bucket", "AWS::EC2::*", or a list of resource types)
+        Provide an empty list [] to scan the entire account
         region: AWS region to use (e.g., "us-east-1", "us-west-2")
 
     Returns:
