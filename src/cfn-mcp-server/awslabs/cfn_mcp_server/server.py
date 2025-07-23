@@ -462,6 +462,7 @@ async def list_resources_by_filter(
     All parameters are optional except for the ResourceScanId (automatically handled).
 
     Parameters:
+        resource_identifier: Filter by specific resource identifier (optional)
         resource_type_prefix: Filter by resource type prefix (optional)
         tag_key: Filter resources by tag key (optional)
         tag_value: Filter resources by tag value (optional, requires tag_key)
