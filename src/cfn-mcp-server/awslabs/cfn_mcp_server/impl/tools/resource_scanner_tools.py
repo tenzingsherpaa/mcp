@@ -14,7 +14,7 @@
 
 """Resource-related tools for the CFN MCP Server."""
 
-from awslabs.cfn_mcp_server.errors import ClientError, PromptUser, handle_aws_api_error
+from awslabs.cfn_mcp_server.errors import ClientError, handle_aws_api_error
 from awslabs.cfn_mcp_server.stack_analysis.cloudformation_utils import CloudFormationUtils
 from typing import Any, Dict, List, Optional
 
@@ -36,28 +36,6 @@ async def handle_start_resource_scan(
             "scan_id": The unique identifier for the started scan
         }
     """
-    # Prompt user for input if no resource type is provided
-    if resource_types is None:
-        common_resource_types = [
-            'AWS::S3::Bucket',
-            'AWS::EC2::Instance',
-            'AWS::RDS::DBInstance',
-            'AWS::Lambda::Function',
-            'AWS::IAM::Role',
-        ]
-
-        raise PromptUser(
-            'Please specify resource types to scan. Options:\n\n'
-            '1. Provide specific resource types)\n'
-            '2. Provide an empty list [] to scan the entire account\n\n'
-            'Common resource types include:\n'
-            + '\n'.join([f'- {rt}' for rt in common_resource_types])
-            + f'\n\nExample usage:\n'
-            f'- Single resource type: ["AWS::S3::Bucket"]\n'
-            f'- Multiple types: {common_resource_types}\n'
-            f'- Entire account: []'
-        )
-
     try:
         cfn_utils = CloudFormationUtils(region=region or 'us-east-1')
     except Exception as e:
@@ -74,48 +52,56 @@ async def handle_start_resource_scan(
 
 async def list_resources_by_filter_impl(
     resource_identifier: Optional[str] = None,
+    resource_scan_id: Optional[str] = None,
     resource_type_prefix: Optional[str] = None,
     tag_key: Optional[str] = None,
     tag_value: Optional[str] = None,
-    limit: int = 100,
+    limit: Optional[int] = 100,
     next_token: Optional[str] = None,
     region: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Simple implementation for listing AWS resources with filtering.
+    """Simple implementation for listing AWS resources with filtering. If no filters are provided, returns all resources which can exhaust the token limit.
+
+    It is recommended to use filters to limit the number of resources returned.
 
     Args:
         resource_identifier: Filter by specific resource identifier (e.g., physical ID)
+        resource_scan_id: Use a specific resource scan ID instead of the latest completed scan
         resource_type_prefix: Filter by resource type prefix (e.g., "AWS::S3::")
         tag_key: Filter resources by tag key
-        tag_value: Filter resources by tag value (requires tag_key)
-        limit: Maximum number of resources to return (1-100)
+        tag_value: Filter resources by tag value
+        limit: Maximum number of resources to return (1-100) (Optional)
         next_token: AWS pagination token from previous response
         region: AWS region to use
 
     Returns:
         Dict containing filtered resources and pagination info
     """
-    # Basic validation
-    if limit < 1 or limit > 100:
-        raise ClientError('Limit must be between 1 and 100')
-
     try:
         cfn_utils = CloudFormationUtils(region=region or 'us-east-1')
 
-        # Get latest completed scan
-        scans = cfn_utils.list_resource_scans()
-        latest_scan = next((s for s in scans if s.get('Status') == 'COMPLETE'), None)
-        if not scans:
-            raise ClientError('No resource scans found in account. Please start a resource scan.')
-        if not latest_scan:
-            raise ClientError(
-                'No completed resource scans found. Scan could still be in progress or start a resource scan if you none exists.'
-            )
+        # Determine which scan ID to use
+        if not resource_scan_id:
+            # Get latest completed scan
+            scans = cfn_utils.list_resource_scans()
+            if not scans:
+                raise ClientError(
+                    'No resource scans found in account. Please start a resource scan.'
+                )
+            latest_scan = next((s for s in scans if s.get('Status') == 'COMPLETE'), None)
+            if not latest_scan:
+                raise ClientError(
+                    'No completed resource scans found. Scan could still be in progress or start a resource scan if you none exists.'
+                )
+            scan_id = latest_scan['ResourceScanId']
+        else:
+            # Use the provided scan ID
+            scan_id = resource_scan_id
 
         # Get filtered resources from AWS API
         if resource_type_prefix or tag_key or tag_value or resource_identifier:
             result = cfn_utils.list_resource_scan_resources_with_filters(
-                scan_id=latest_scan['ResourceScanId'],
+                scan_id=scan_id,
                 resource_identifier=resource_identifier,
                 resource_type_prefix=resource_type_prefix,
                 tag_key=tag_key,
@@ -124,12 +110,14 @@ async def list_resources_by_filter_impl(
                 next_token=next_token,
             )
             resources = result['resources']
+            next_token_value = result.get('next_token')
         else:
             # Get all resources if no filters
-            all_resources = cfn_utils.list_resource_scan_resources(latest_scan['ResourceScanId'])
-            resources = all_resources[:limit]
-            # If more than limit, set next_token (has more boolean)
-            result = {'next_token': None if len(all_resources) <= limit else 'has_more'}
+            result = cfn_utils.list_resource_scan_resources_with_filters(
+                scan_id=scan_id, next_token=next_token
+            )
+            resources = result['resources']
+            next_token_value = result.get('next_token')
 
         # Format output
         managed_resources = []
@@ -156,8 +144,8 @@ async def list_resources_by_filter_impl(
             },
             'pagination': {
                 'limit': limit,
-                'next_token': result.get('next_token'),
-                'has_more': bool(result.get('next_token')),
+                'next_token': next_token_value,
+                'has_more': bool(next_token_value),
             },
         }
 
@@ -167,6 +155,7 @@ async def list_resources_by_filter_impl(
 
 async def list_related_resources_impl(
     resources: List[Dict[str, Any]],
+    resource_scan_id: Optional[str] = None,
     max_results: int = 100,
     next_token: Optional[str] = None,
     region: Optional[str] = None,
@@ -176,8 +165,8 @@ async def list_related_resources_impl(
     Args:
         resources: List of resources to find related resources for, each resource should be a dictionary
                    with 'resource_type' and 'resource_identifier' keys.
-                   Example: [{'resource_type': 'AWS::S3::Bucket', 'resource_identifier': 'my-bucket-123'}]
-
+                   Example: [{'resource_type': 'AWS::S3::Bucket', 'resource_identifier': BucketName': 'my-bucket-123'}]
+        resource_scan_id: Use a specific resource scan ID instead of the latest completed scan
         max_results: Maximum number of related resources to return (1-100)
         next_token: AWS pagination token from previous response
         region: AWS region to use
@@ -198,15 +187,23 @@ async def list_related_resources_impl(
     try:
         cfn_utils = CloudFormationUtils(region=region or 'us-east-1')
 
-        # Get latest completed scan
-        scans = cfn_utils.list_resource_scans()
-        latest_scan = next((s for s in scans if s.get('Status') == 'COMPLETE'), None)
-        if not scans:
-            raise ClientError('No resource scans found in account. Please start a resource scan.')
-        if not latest_scan:
-            raise ClientError(
-                'No completed resource scans found. Scan could still be in progress or start a resource scan if you none exists.'
-            )
+        # Determine which scan ID to use
+        if not resource_scan_id:
+            # Get latest completed scan
+            scans = cfn_utils.list_resource_scans()
+            if not scans:
+                raise ClientError(
+                    'No resource scans found in account. Please start a resource scan.'
+                )
+            latest_scan = next((s for s in scans if s.get('Status') == 'COMPLETE'), None)
+            if not latest_scan:
+                raise ClientError(
+                    'No completed resource scans found. Scan could still be in progress or start a resource scan if you none exists.'
+                )
+            scan_id = latest_scan['ResourceScanId']
+        else:
+            # Use the provided scan ID
+            scan_id = resource_scan_id
 
         # Format resources for API call
         formatted_resources = []
@@ -226,7 +223,7 @@ async def list_related_resources_impl(
 
         # Call AWS API
         response = cfn_utils.cfn_client.list_resource_scan_related_resources(
-            ResourceScanId=latest_scan['ResourceScanId'],
+            ResourceScanId=scan_id,
             Resources=formatted_resources,
             MaxResults=max_results,
             **({'NextToken': next_token} if next_token else {}),
@@ -240,7 +237,7 @@ async def list_related_resources_impl(
         for resource in related_resources:
             resource_entry = {
                 'resource_type': resource.get('ResourceType'),
-                'resource_identifier': resource.get('ResourceIdentifier', {}),
+                'identifier': resource.get('ResourceIdentifier', {}),
                 'managed_by_stack': resource.get('ManagedByStack', False),
             }
 

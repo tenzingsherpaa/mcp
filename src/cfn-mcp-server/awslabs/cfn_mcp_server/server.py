@@ -432,6 +432,10 @@ async def list_resources_by_filter(
         default=None,
         description='Filter by specific resource identifier (e.g., "my-bucket-name")',
     ),
+    resource_scan_id: str | None = Field(
+        default=None,
+        description='Resource scan ID to use for filtering resources. If not provided, the latest completed scan will be used.',
+    ),
     resource_type_prefix: str | None = Field(
         default=None,
         description='Filter by resource type prefix (e.g., "AWS::S3::" to get all S3 resources)',
@@ -443,7 +447,7 @@ async def list_resources_by_filter(
     ),
     limit: int = Field(
         default=100,
-        description='Maximum number of resources to return (default: 100, max: 100 due to AWS API limits)',
+        description='Maximum number of resources to return',
     ),
     next_token: str | None = Field(
         default=None, description='Pagination token from previous response to get next page'
@@ -463,6 +467,8 @@ async def list_resources_by_filter(
 
     Parameters:
         resource_identifier: Filter by specific resource identifier (optional)
+        resource_scan_id: Resource scan ID to use for filtering resources. (optional)
+                           If not provided, the latest completed scan will be used even if it's partial or full scan.
         resource_type_prefix: Filter by resource type prefix (optional)
         tag_key: Filter resources by tag key (optional)
         tag_value: Filter resources by tag value (optional, requires tag_key)
@@ -475,6 +481,7 @@ async def list_resources_by_filter(
     """
     return await list_resources_by_filter_impl(
         resource_identifier=resource_identifier,
+        resource_scan_id=resource_scan_id,
         resource_type_prefix=resource_type_prefix,
         tag_key=tag_key,
         tag_value=tag_value,
@@ -489,6 +496,10 @@ async def list_related_resources(
     resources: list = Field(
         description='List of resources to find related resources for. Each resource should have resource_type and resource_identifier keys.'
     ),
+    resource_scan_id: str | None = Field(
+        default=None,
+        description='Resource scan ID to use for finding related resources. If not provided, the latest completed scan will be used.',
+    ),
     max_results: int = Field(
         default=100,
         description='Maximum number of related resources to return (default: 100, max: 100 due to AWS API limits)',
@@ -500,14 +511,18 @@ async def list_related_resources(
         description='The AWS region that the operation should be performed in', default=None
     ),
 ) -> dict:
-    """List AWS resources related to the specified resources.
+    """List AWS resources related to the specified list of resources or resource.
 
     This tool uses AWS CloudFormation's list_resource_scan_related_resources API
     to find resources that are related to the specified input resources.
 
+    Note: Call with one resource at a time if you want explicitly related resources
+
     Parameters:
         resources: List of resources to find related resources for. Each resource should have
                   'resource_type' and 'resource_identifier' keys. Maximum 100 resources.
+        resource_scan_id: Resource scan ID to use for finding related resources.
+                         If not provided, the latest completed scan will be used even if it's partial or full scan.
         max_results: Maximum number of related resources to return (1-100, AWS API limit)
         next_token: AWS pagination token from previous response (optional)
         region: AWS region to use (optional)
@@ -524,7 +539,11 @@ async def list_related_resources(
         ]
     """
     return await list_related_resources_impl(
-        resources=resources, max_results=max_results, next_token=next_token, region=region
+        resources=resources,
+        resource_scan_id=resource_scan_id,
+        max_results=max_results,
+        next_token=next_token,
+        region=region,
     )
 
 
@@ -631,6 +650,7 @@ async def analyze_stack(
             'outputs': stack_analysis.get('outputs', []),
             'parameters': stack_analysis.get('parameters', []),
             # Stack resource matching results
+            'prompt': f'Analyze the CloudFormation stack "{stack_name}" and its resources Offer insights on the stack resources, related resources, and best practices.',
             'stack_name': resources_data.get('stack_name'),
             'resource_scan_id': resources_data.get('resource_scan_id'),
             'matched_resources': resources_data.get('matched_resources', []),

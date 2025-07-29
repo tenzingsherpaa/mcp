@@ -24,11 +24,11 @@ logger = logging.getLogger(__name__)
 class CloudFormationUtils:
     """Utility class for CloudFormation API operations."""
 
-    def __init__(self, region: Optional[str] = None):
+    def __init__(self, region: Optional[str] = None, resource_scan_id: Optional[str] = None):
         """Initialize the CloudFormationUtils with the specified AWS region and store the resource scan ID."""
         self.region = region
         self._cfn_client = None
-        self.resource_scan_id: Optional[str] = None
+        self.resource_scan_id = resource_scan_id
 
     @property
     def cfn_client(self):
