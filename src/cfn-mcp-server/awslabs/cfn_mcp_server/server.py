@@ -463,7 +463,6 @@ async def list_resources_by_filter(
     to use the filtering parameters to reduce the number of resources returned,
 
     This tool uses AWS CloudFormation's resource scan API with server-side filtering.
-    All parameters are optional except for the ResourceScanId (automatically handled).
 
     Parameters:
         resource_identifier: Filter by specific resource identifier (optional)

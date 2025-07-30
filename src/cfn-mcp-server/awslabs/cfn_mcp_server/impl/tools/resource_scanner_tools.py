@@ -60,7 +60,7 @@ async def list_resources_by_filter_impl(
     next_token: Optional[str] = None,
     region: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Simple implementation for listing AWS resources with filtering. If no filters are provided, returns all resources which can exhaust the token limit.
+    """Simple implementation for listing AWS resources with filtering. If no filters are provided, returns a page containing upto a 100 resources.
 
     It is recommended to use filters to limit the number of resources returned.
 
@@ -165,7 +165,7 @@ async def list_related_resources_impl(
     Args:
         resources: List of resources to find related resources for, each resource should be a dictionary
                    with 'resource_type' and 'resource_identifier' keys.
-                   Example: [{'resource_type': 'AWS::S3::Bucket', 'resource_identifier': BucketName': 'my-bucket-123'}]
+                   Example: [{'resource_type': 'AWS::S3::Bucket', 'resource_identifier': { BucketName': 'my-bucket-123'}]
         resource_scan_id: Use a specific resource scan ID instead of the latest completed scan
         max_results: Maximum number of related resources to return (1-100)
         next_token: AWS pagination token from previous response
@@ -226,9 +226,7 @@ async def list_related_resources_impl(
             ResourceScanId=scan_id,
             Resources=formatted_resources,
             MaxResults=max_results,
-            **({'NextToken': next_token} if next_token else {}),
         )
-
         related_resources = response.get('RelatedResources', [])
 
         managed_resources = []
