@@ -1,0 +1,78 @@
+Output for analyze stack ( AWSMPLoopyService-Service-dev )
+Model Opus 4.0
+
+
+I've successfully analyzed the __AWSMPLoopyService-Service-dev__ CloudFormation stack. Here's a comprehensive summary of the analysis:
+
+## Stack Overview
+
+- __Stack Status__: UPDATE_COMPLETE (healthy state)
+- __Created__: June 6, 2024
+- __Last Updated__: August 9, 2024
+- __Region__: us-east-1
+
+## Key Resources (30 total)
+
+The stack contains:
+
+- __12 IAM Roles__ - Security and access management
+- __4 Lambda Functions__ with 4 corresponding versions
+- __3 CodeDeploy Applications__ - For deployment management
+- __2 CloudWatch Log Groups__ - For logging
+- __1 API Gateway REST API__ with deployment
+- __1 Step Functions State Machine__
+- __1 EventBridge Event Bus__
+- __1 CodeGuru Profiling Group__
+
+## API Endpoint
+
+The stack exposes a REST API endpoint:
+
+- __URL__: [](https://5nud49d464.execute-api.us-east-1.amazonaws.com/dev/)<https://5nud49d464.execute-api.us-east-1.amazonaws.com/dev/>
+- __Export Name__: LoopyEndpoint
+
+## Related Resources Analysis
+
+The analysis found __188 related resources__:
+
+- __88 managed__ by CloudFormation (47%)
+- __100 unmanaged__ resources (53%)
+
+### Resource Distribution by Service:
+
+1. __Management__ (156 resources): 56 managed, 100 unmanaged
+2. __Compute__ (16 resources): All managed
+3. __Security__ (10 resources): All managed
+4. __Networking__ (4 resources): All managed
+5. __Application Integration__ (2 resources): All managed
+
+## Account-Wide Insights
+
+- __Total AWS resources in account__: 3,014
+- __Managed by CloudFormation__: 440 (14.6%)
+- __Unmanaged resources__: 2,574 (85.4%)
+- __Unique resource types__: 59
+
+## Key Findings
+
+1. __High Unmanaged Resource Count__: There are 100 unmanaged resources related to this stack, primarily in the Management category. This suggests opportunities for better infrastructure-as-code coverage.
+
+2. __Service Architecture__: The stack appears to implement a serverless application with:
+
+   - Lambda functions for compute
+   - API Gateway for HTTP endpoints
+   - Step Functions for orchestration
+   - EventBridge for event-driven architecture
+   - CodeDeploy for deployment automation
+
+3. __Security Setup__: Multiple IAM roles indicate proper security separation of concerns.
+
+4. __Monitoring__: CloudWatch Log Groups and CodeGuru Profiling Group show monitoring is configured.
+
+## Recommendations
+
+1. Consider managing the 100 unmanaged related resources through CloudFormation for better infrastructure consistency.
+2. Review the Management category resources to identify which ones should be included in the stack.
+3. The stack follows AWS best practices with proper IAM roles, monitoring, and deployment automation.
+
+The stack has been successfully stored in the RAG system for future queries.

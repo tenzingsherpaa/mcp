@@ -1,0 +1,82 @@
+Output for Query Rag
+Query: Can you find lambdas in my account that pose a security risk
+Model: Sonnet 3.7
+
+
+# Lambda Security Risk Assessment
+
+Based on my analysis of Lambda functions in your AWS account, here are my security findings:
+
+## Lambda Functions Analysis
+
+### Lambda Permission Issues
+
+I've identified several Lambda functions with permission configurations that warrant security review:
+
+1. __Lambda Functions with Resource-Based Policies__
+
+   - `amplify-login-verify-auth-challenge-02d1f34b`
+   - `amplify-login-define-auth-challenge-02d1f34b`
+   - `amplify-login-create-auth-challenge-02d1f34b`
+   - `ControlPlane-SFN`
+
+   These functions have Lambda permission resources attached (AWS::Lambda::Permission), which grant other AWS services or external entities permission to invoke them. Resource-based policies should be reviewed to ensure they're not granting overly permissive access.
+
+2. __Unmanaged Lambda Functions__ Several Lambda functions are unmanaged (created outside of CloudFormation), including:
+
+   - `DataPlaneLambda`
+   - `Cleaner`
+   - `ControlPlane-SFN`
+   - Multiple `CODETEST_Series` Lambda functions
+
+   Unmanaged resources are more difficult to track and may not follow your organization's security standards or change management processes.
+
+## Security Recommendations
+
+### 1. Implement Least Privilege Access
+
+Review the IAM roles attached to Lambda functions to ensure they follow least privilege principles:
+
+- Most functions examined appear to use basic Lambda execution roles, which is good
+- Consider implementing custom policies that restrict permissions to only what's necessary
+- Remove any wildcard permissions (e.g., `*` in resource or action elements)
+
+### 2. Bring Unmanaged Resources Under Management
+
+- Move unmanaged Lambda functions into CloudFormation stacks
+
+- This enables:
+
+  - Version control for infrastructure
+  - Consistent security policies
+  - Automated compliance checks
+  - Standardized deployment processes
+
+### 3. Review Resource-Based Policies
+
+For Lambda functions with permission resources:
+
+- Verify that only authorized services can trigger these functions
+- Remove any unnecessary permissions
+- Implement source ARN or source account conditions to restrict who can invoke functions
+
+### 4. Address Other Security Concerns
+
+- __Environment Variable Encryption__: Ensure all sensitive data in Lambda environment variables is encrypted
+- __VPC Configuration__: Consider placing sensitive Lambda functions in a VPC for network isolation
+- __Function Timeout Settings__: Some functions have high timeout values (300 seconds for `Cleaner`), which could increase vulnerability to denial-of-service attacks
+- __Code Vulnerabilities__: Implement regular security scans of Lambda function code
+
+### 5. Implement Monitoring and Logging
+
+- Enable AWS CloudTrail to monitor Lambda function usage and configuration changes
+- Set up CloudWatch alarms for unusual Lambda activity
+- Implement AWS Config rules to continuously monitor Lambda security settings
+
+## Next Steps
+
+1. Conduct a detailed review of the IAM policies attached to Lambda functions
+2. Implement CloudFormation templates to manage currently unmanaged Lambda resources
+3. Set up automated security scanning for Lambda functions
+4. Review Lambda invocation patterns and implement appropriate throttling and concurrency controls
+5. Create a Lambda security baseline for your organization

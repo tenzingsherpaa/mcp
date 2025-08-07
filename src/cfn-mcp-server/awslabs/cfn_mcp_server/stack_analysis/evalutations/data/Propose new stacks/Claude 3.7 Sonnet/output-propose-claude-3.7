@@ -1,0 +1,45 @@
+Output for Propose New Stack
+Model: Claude 3.7
+
+Based on the analysis of your AWS resources, I've proposed a new stack organization for your 2,574 unmanaged resources. Here's the recommended structure:
+
+Stack Proposal Summary
+Total Resources: 2,574
+
+Proposed Stacks: 15
+
+Product Categories: 10
+
+Recommended Stack Organization
+Large Resource Categories
+Management Resources (2,319 resources)
+
+Split into 6 stacks due to AWS template limits (450 resources max per stack)
+
+Management-Stack-1 through Management-Stack-5: 450 resources each
+
+Management-Stack-6: 69 resources
+
+Medium Resource Categories
+Security-Stack: 114 resources
+
+Compute-Stack: 59 resources
+
+Networking-Stack: 43 resources
+
+Small Resource Categories
+Storage-Stack: 13 resources
+
+ApplicationIntegration-Stack: 12 resources
+
+Database-Stack: 10 resources
+
+Analytics-Stack: 2 resources
+
+FrontEndWebMobile-Stack: 1 resource
+
+DeveloperTools-Stack: 1 resource
+
+This organization groups resources by AWS service categories, making them easier to manage and maintain. Each stack stays within AWS CloudFormation template limits while maintaining logical separation of concerns.
+
+Would you like me to generate actual CloudFormation templates for any of these proposed stacks, or focus on a specific product type?

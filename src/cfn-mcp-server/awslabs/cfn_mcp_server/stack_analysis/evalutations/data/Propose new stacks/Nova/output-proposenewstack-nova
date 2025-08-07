@@ -1,0 +1,38 @@
+Output for Propose New Stack
+Model: Nova Premier 
+
+Task Completed
+
+
+The analysis proposes 15 new CloudFormation stacks to organize 2574 unmanaged resources across 10 AWS product categories:
+
+Management Stacks (6)
+
+5 stacks with 450 resources each
+1 stack with 69 resources
+Other Stacks
+
+Security: 114 resources
+Compute: 59 resources
+Networking: 43 resources
+ApplicationIntegration: 12 resources
+Database: 10 resources
+Storage: 13 resources
+FrontEndWebMobile: 1 resource
+Analytics: 2 resources
+DeveloperTools: 1 resource
+Key Observations
+
+69% of unmanaged resources (1784/2574) are in Management category
+All stacks respect 450 resource limit
+10 product types covered
+Recommendations
+
+Prioritize creating Management stacks first
+Review resource distribution in each category
+Consider enabling template generation for critical stacks
+Would you like to:
+
+Generate CloudFormation templates for these proposals?
+Focus on specific product categories first?
+Modify resource grouping parameters?

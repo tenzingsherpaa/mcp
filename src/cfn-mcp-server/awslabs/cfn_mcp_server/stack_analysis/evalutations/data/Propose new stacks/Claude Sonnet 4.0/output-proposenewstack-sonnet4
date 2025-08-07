@@ -1,0 +1,128 @@
+Output for Propose new Stack 
+Model Sonnet 4.0
+
+Based on the analysis of your unmanaged AWS resources, I've identified __2,574 unmanaged resources__ that can be organized into __15 proposed CloudFormation stacks__ across 10 AWS service categories. Here's the comprehensive stack proposal:
+
+## Proposed Stack Organization
+
+### 🎯 __High Priority Stacks__
+
+__1. Security Stack__ (114 resources)
+
+- __Purpose:__ Centralize IAM policies, roles, security groups, and access controls
+- __Priority:__ Critical - Security resources should be managed and versioned
+
+__2. Networking Stack__ (43 resources)
+
+- __Purpose:__ VPCs, subnets, route tables, gateways, and network infrastructure
+- __Priority:__ High - Foundation for other resources
+
+__3. Compute Stack__ (59 resources)
+
+- __Purpose:__ EC2 instances, Lambda functions, container services
+- __Priority:__ High - Core application infrastructure
+
+### 📊 __Management Infrastructure__ (2,719 resources → 6 stacks)
+
+Due to the large volume, Management resources are split into 6 stacks:
+
+- __Management-Stack-1 through 5:__ 450 resources each
+- __Management-Stack-6:__ 69 resources
+
+__Includes:__ CloudWatch alarms, logs, metrics, SNS topics, monitoring resources
+
+### 🗄️ __Data & Storage Stacks__
+
+__4. Database Stack__ (10 resources)
+
+- __Purpose:__ RDS instances, DynamoDB tables, database configurations
+
+__5. Storage Stack__ (13 resources)
+
+- __Purpose:__ S3 buckets, EBS volumes, storage configurations
+
+__6. Analytics Stack__ (2 resources)
+
+- __Purpose:__ Data processing and analytics resources
+
+### 🔗 __Integration & Development Stacks__
+
+__7. ApplicationIntegration Stack__ (12 resources)
+
+- __Purpose:__ API Gateway, SQS queues, SNS topics, event bridges
+
+__8. DeveloperTools Stack__ (1 resource)
+
+- __Purpose:__ CodeCommit, CodeBuild, CodeDeploy resources
+
+__9. FrontEndWebMobile Stack__ (1 resource)
+
+- __Purpose:__ CloudFront distributions, web application resources
+
+## Implementation Strategy
+
+### __Phase 1: Foundation (Weeks 1-2)__
+
+1. Security Stack - Establish access controls first
+2. Networking Stack - Set up network foundation
+3. Storage Stack - Establish data persistence layer
+
+### __Phase 2: Core Services (Weeks 3-4)__
+
+1. Database Stack - Set up data services
+2. Compute Stack - Migrate compute resources
+3. ApplicationIntegration Stack - Connect services
+
+### __Phase 3: Monitoring & Management (Weeks 5-8)__
+
+1. Management Stacks 1-6 - Implement comprehensive monitoring
+2. Analytics Stack - Set up data insights
+3. Remaining specialty stacks
+
+## Benefits of This Approach
+
+✅ __Governance:__ All resources under CloudFormation control\
+✅ __Security:__ Centralized security management and policies\
+✅ __Scalability:__ Modular approach allows independent stack evolution\
+✅ __Disaster Recovery:__ Infrastructure as Code enables rapid rebuilds\
+✅ __Compliance:__ Version-controlled infrastructure changes\
+✅ __Cost Management:__ Better resource tracking and optimization
+
+## Next Steps Options
+
+Would you like me to:
+
+1. __Generate actual CloudFormation templates__ for specific stacks?
+2. __Focus on a particular product type__ (e.g., Security, Networking)?
+3. __Provide detailed resource breakdowns__ for any specific stack?
+
+Task Completed
+
+I've analyzed your 2,574 unmanaged AWS resources and proposed organizing them into 15 CloudFormation stacks across 10 service categories:
+
+__High Priority Stacks:__
+
+- Security Stack (114 resources) - IAM, security groups, access controls
+- Networking Stack (43 resources) - VPCs, subnets, gateways
+- Compute Stack (59 resources) - EC2, Lambda, containers
+
+__Data & Storage:__
+
+- Database Stack (10 resources) - RDS, DynamoDB
+- Storage Stack (13 resources) - S3, EBS volumes
+- Analytics Stack (2 resources) - Data processing
+
+__Management Infrastructure (2,719 resources):__
+
+- 6 Management Stacks (split due to 450 resource limit per template)
+- Includes CloudWatch, monitoring, SNS, logging resources
+
+__Integration & Development:__
+
+- ApplicationIntegration Stack (12 resources) - API Gateway, SQS, EventBridge
+- DeveloperTools Stack (1 resource) - CI/CD tools
+- FrontEndWebMobile Stack (1 resource) - CloudFront, web resources
+
+This approach will bring your infrastructure from 14.6% managed to nearly 100% CloudFormation-managed, providing better governance, security, scalability, and disaster recovery capabilities.
+
+Recommended implementation: Start with Security and Networking stacks as foundation, then proceed with Compute and Database stacks, followed by the Management monitoring infrastructure.

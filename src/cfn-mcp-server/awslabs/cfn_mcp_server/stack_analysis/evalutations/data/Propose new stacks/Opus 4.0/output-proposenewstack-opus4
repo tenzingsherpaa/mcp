@@ -1,0 +1,59 @@
+Output for Propose new stack
+Model Opus 4.0 
+
+I've analyzed the unmanaged resources and here's a proposal for organizing them into new CloudFormation stacks:
+
+## Stack Proposal Summary
+
+__Total Unmanaged Resources__: 2,574\
+__Proposed Stacks__: 15\
+__Product Types__: 10 different AWS service categories
+
+## Proposed Stack Organization
+
+### 1. __Management Resources__ (2,319 resources → 6 stacks)
+
+- Management-Stack-1: 450 resources
+- Management-Stack-2: 450 resources
+- Management-Stack-3: 450 resources
+- Management-Stack-4: 450 resources
+- Management-Stack-5: 450 resources
+- Management-Stack-6: 69 resources
+
+### 2. __Security Resources__ (114 resources → 1 stack)
+
+- Security-Stack: 114 resources (IAM roles, policies, etc.)
+
+### 3. __Compute Resources__ (59 resources → 1 stack)
+
+- Compute-Stack: 59 resources (EC2 instances, Lambda functions, etc.)
+
+### 4. __Networking Resources__ (43 resources → 1 stack)
+
+- Networking-Stack: 43 resources (VPCs, subnets, security groups, etc.)
+
+### 5. __Storage Resources__ (13 resources → 1 stack)
+
+- Storage-Stack: 13 resources (S3 buckets, EBS volumes, etc.)
+
+### 6. __Application Integration__ (12 resources → 1 stack)
+
+- ApplicationIntegration-Stack: 12 resources (SQS, SNS, EventBridge, etc.)
+
+### 7. __Database Resources__ (10 resources → 1 stack)
+
+- Database-Stack: 10 resources (RDS, DynamoDB, etc.)
+
+### 8. __Analytics Resources__ (2 resources → 1 stack)
+
+- Analytics-Stack: 2 resources
+
+### 9. __Frontend/Mobile Resources__ (1 resource → 1 stack)
+
+- FrontEndWebMobile-Stack: 1 resource
+
+### 10. __Developer Tools__ (1 resource → 1 stack)
+
+- DeveloperTools-Stack: 1 resource
+
+Would you like me to create the actual CloudFormation templates for these proposed stacks? This will generate the infrastructure-as-code templates that can be used to manage these currently unmanaged resources.

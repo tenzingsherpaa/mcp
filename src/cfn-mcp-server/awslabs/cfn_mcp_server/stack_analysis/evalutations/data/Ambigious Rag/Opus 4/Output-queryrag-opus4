@@ -1,0 +1,61 @@
+Output for Query Rag 
+Query: Can you find lambdas in my account that pose a security risk
+Model Opus 4
+
+
+Based on my analysis of the Lambda functions in your account, I've identified several security risks:
+
+## Lambda Functions with Security Concerns
+
+### 1. __DataPlaneLambda__
+
+__Security Risks:__
+
+- ⚠️ __Overly Permissive IAM Policy__: The execution role has `"Resource": "*"` for CloudWatch PutMetricData, which violates the principle of least privilege
+- ⚠️ __Unmanaged Resource__: Not tracked in CloudFormation, making it harder to audit and maintain
+- Has access to DynamoDB table `RunningEvaluationsWorkflow`
+
+### 2. __test__ Function
+
+__Security Risks:__
+
+- ⚠️ __Poor Naming Convention__: Generic name "test" suggests this might be a forgotten test function in production
+- ⚠️ __Long Timeout__: 5-minute (300s) timeout could lead to higher costs if exploited
+- ⚠️ __Unmanaged Resource__: Not tracked in CloudFormation
+
+### 3. __Multiple CODETEST Functions__
+
+- `CODETEST_Series_ORRLoadTests10TPS_1328976868`
+- `CODETEST_Series_ORRLoadTests20TPS_1329900389`
+- `CODETEST_Series_ORRLoadTests40TPS_1331747431`
+- `CODETEST_Series_ORRLoadTests50TPS_1332670952`
+
+__Security Risks:__
+
+- ⚠️ __Test Functions in Production__: These appear to be load testing functions that should not be in a production account
+- ⚠️ __Unmanaged Resources__: All are unmanaged
+
+### 4. __Other Concerning Functions__
+
+- __Cleaner__: Generic name, purpose unclear, unmanaged
+- __ControlPlane-SFN__: Unmanaged control plane function
+
+## Key Security Recommendations
+
+1. __Remove Test Functions__: Delete or move functions like "test" and "CODETEST_*" to a development account
+2. __Fix Overly Permissive Policies__: Replace `"Resource": "*"` with specific resource ARNs
+3. __Manage with CloudFormation__: Import these functions into CloudFormation stacks for better governance
+4. __Review Function Purposes__: Audit functions with generic names like "Cleaner"
+5. __Set Appropriate Timeouts__: Review and reduce timeout values where possible
+6. __Enable Monitoring__: Ensure CloudWatch Logs and X-Ray tracing are properly configured
+
+## Summary
+
+You have __55 unmanaged Lambda functions__ in your account, with at least 7 having obvious security concerns. The main risks are:
+
+- Overly permissive IAM policies
+- Test functions in production
+- Lack of infrastructure-as-code management
+- Poor naming conventions making audit difficult
+
+Would you like me to help create CloudFormation templates to properly manage these functions or generate specific IAM policies with least-privilege access?

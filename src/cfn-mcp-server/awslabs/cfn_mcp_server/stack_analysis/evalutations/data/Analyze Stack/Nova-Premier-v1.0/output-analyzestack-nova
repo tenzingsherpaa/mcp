@@ -1,0 +1,70 @@
+Output for analyze stack ( AWSMPLoopyService-Service-dev )
+Model Nova-Premier-v1.0
+
+
+
+The stack analysis for AWSMPLoopyService-Service-dev completed successfully. The results show:
+
+- 30 managed resources (all under CloudFormation control)
+- 100 related unmanaged resources (primarily in Management category)
+- Key outputs like API Gateway endpoint and IAM roles
+- Best practices recommendations for stack organization
+
+The next logical step is to present these findings to the user in a structured format. The analysis contains:
+
+1. Stack metadata (ID, status, creation time)
+2. Resource summary (total/managed/unmanaged counts)
+3. Related resource breakdown by product type
+4. Account-wide resource summary
+5. Best practice recommendations
+
+I'll format this into a clear report highlighting critical information and actionable insights. The user needs to know:
+
+- Stack health status (UPDATE_COMPLETE)
+- Resource management status (100 unmanaged related resources)
+- Important outputs (API endpoint)
+- Key recommendations for improvement
+
+This will help them understand their stack's current state and identify areas for optimization.
+
+Task Completed
+
+Stack analysis for __AWSMPLoopyService-Service-dev__ completed successfully. Here are the key findings:
+
+__Stack Overview__
+
+- Status: UPDATE_COMPLETE
+- Created: June 6, 2024
+- Last Updated: August 9, 2024
+- Region: us-east-1
+- Total Resources: 30 (all managed)
+
+__Resource Summary__
+
+- 12 IAM Roles
+- 4 Lambda Functions
+- 3 CodeDeploy Applications
+- 1 API Gateway REST API
+- 1 StepFunctions State Machine
+- 100 related unmanaged resources detected (primarily in Management category)
+
+__Important Outputs__
+
+- API Endpoint: [](https://5nud49d464.execute-api.us-east-1.amazonaws.com/dev/)<https://5nud49d464.execute-api.us-east-1.amazonaws.com/dev/>
+- Service Rollback Alarm: arn:aws:cloudwatch:us-east-1:211125334932:alarm:AWSMPLoopyService-RollbackAlarm-ServiceStack
+
+__Best Practice Recommendations__
+
+1. Implement nested stacks for better resource organization
+2. Use cross-stack references for shared resources
+3. Address 100 unmanaged related resources
+4. Add stack policies for critical resource protection
+5. Review IAM permissions for least privilege
+
+__Next Steps__
+
+- Consider creating templates for unmanaged resources
+- Evaluate cost optimization for related resources
+- Implement parameter validation constraints
+
+Would you like me to generate CloudFormation templates for the unmanaged resources?
