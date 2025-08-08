@@ -229,7 +229,7 @@ async def list_related_resources_impl(
             ResourceScanId=latest_scan['ResourceScanId'],
             Resources=formatted_resources,
             MaxResults=max_results,
-            **({'NextToken': next_token} if next_token else {}),
+            next_token=next_token,
         )
 
         related_resources = response.get('RelatedResources', [])

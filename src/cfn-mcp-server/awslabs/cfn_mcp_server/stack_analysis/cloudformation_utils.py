@@ -289,7 +289,7 @@ class CloudFormationUtils:
             raise handle_aws_api_error(e)
 
     def list_resource_scan_related_resources(
-        self, resources: List[Dict[str, Any]], scan_id: Optional[str] = None
+        self, resources: List[Dict[str, Any]], scan_id: Optional[str] = None, next_token: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """List related resources for the specified resources from a resource scan.
 
@@ -297,6 +297,7 @@ class CloudFormationUtils:
             resources: List of resource identifiers to find related resources for.
                       Each resource should have 'ResourceType' and 'ResourceIdentifier' keys.
             scan_id: Resource scan ID (uses stored ID if not provided)
+            next_token: Token for pagination
 
         Returns:
             List of related resources found in the scan
@@ -317,7 +318,7 @@ class CloudFormationUtils:
             # Use paginator to handle large result sets
             paginator = self.cfn_client.get_paginator('list_resource_scan_related_resources')
             page_iterator = paginator.paginate(
-                ResourceScanId=effective_scan_id, Resources=resources
+                ResourceScanId=effective_scan_id, Resources=resources, next_token=next_token
             )
 
             all_related_resources = []
@@ -331,4 +332,93 @@ class CloudFormationUtils:
 
         except Exception as e:
             logger.error(f'Error listing resource scan related resources: {str(e)}')
+            raise handle_aws_api_error(e)
+
+    def create_generated_template(
+        self,
+        stack_name: str,
+        resources: List[Dict[str, Any]],
+        generated_template_name: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Create a generated template for importing resources into an existing stack.
+
+        Args:
+            stack_name: Name of the existing stack to augment
+            resources: List of resources to include in the generated template
+            generated_template_name: Optional name for the generated template
+
+        Returns:
+            Response from the create_generated_template API call
+        """
+        try:
+            # Generate a unique template name if not provided
+            if not generated_template_name:
+                import uuid
+
+                generated_template_name = f'augment-{stack_name}-{str(uuid.uuid4())[:8]}'
+
+            logger.info(
+                f'Creating generated template "{generated_template_name}" for stack "{stack_name}"'
+            )
+
+            if stack_name:
+                # The correct parameters for create_generated_template API
+                response = self.cfn_client.create_generated_template(
+                    GeneratedTemplateName=generated_template_name,
+                    Resources=resources,
+                    StackName=stack_name,  # This tells CloudFormation to create an UPDATE template
+                )
+                return response
+            else:
+                response = self.cfn_client.create_generated_template(
+                    GeneratedTemplateName=generated_template_name, Resources=resources
+                )
+                return response
+
+        except Exception as e:
+            logger.error(f'Error creating generated template for stack "{stack_name}": {str(e)}')
+            raise handle_aws_api_error(e)
+
+    def describe_generated_template(self, generated_template_name: str) -> Dict[str, Any]:
+        """Describe the generated template.
+
+        Args:
+            generated_template_name: Name of the generated template to describe
+
+        Returns:
+            Response from the describe_generated_template API call
+        """
+        try:
+            logger.info(f'Describing generated template "{generated_template_name}"')
+            response = self.cfn_client.describe_generated_template(
+                GeneratedTemplateName=generated_template_name
+            )
+            return response
+        except Exception as e:
+            logger.error(
+                f'Error describing generated template "{generated_template_name}": {str(e)}'
+            )
+            raise handle_aws_api_error(e)
+
+    def get_generated_template(
+        self, generated_template_name: str, format: Optional[str] = 'JSON'
+    ) -> str:
+        """Get the generated template body.
+
+        Args:
+            generated_template_name: Name of the generated template to retrieve
+            format: Format of the template (YAML or JSON)
+
+        Returns:
+            The template body as a string
+        """
+        try:
+            logger.info(f'Getting generated template "{generated_template_name}"')
+            response = self.cfn_client.get_generated_template(
+                GeneratedTemplateName=generated_template_name, Format=format
+            )
+            # Return the template body, not the full response
+            return response.get('TemplateBody', '')
+        except Exception as e:
+            logger.error(f'Error getting generated template "{generated_template_name}": {str(e)}')
             raise handle_aws_api_error(e)
