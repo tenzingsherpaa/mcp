@@ -27,19 +27,42 @@ from awslabs.cfn_mcp_server.impl.tools import (
     list_resources_by_filter_impl,
 )
 from awslabs.cfn_mcp_server.schema_manager import schema_manager
+from awslabs.cfn_mcp_server.stack_analysis.recommendation_generator import RecommendationGenerator
 from awslabs.cfn_mcp_server.stack_analysis.stack_analyzer import StackAnalyzer
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
 
+# RAG system import (with fallback if dependencies not available)
+try:
+    from awslabs.cfn_mcp_server.stack_analysis.simple_rag import get_rag_instance
+
+    RAG_AVAILABLE = True
+except ImportError:
+    RAG_AVAILABLE = False
+    get_rag_instance = None  # type: ignore
+
+
 mcp = FastMCP(
-    'awslabs.cfn-mcp-server',
+    'cfn-mcp-server',
     instructions="""
     # CloudFormation MCP
 
     This MCP allows you to:
     1. Read and List all of your AWS resources by the CloudFormation type name (e.g. AWS::S3::Bucket)
     2. Create/Update/Delete your AWS resources
+    3. Use RAG (Retrieval-Augmented Generation) to query your AWS resources with natural language
+
+    ## RAG Functionality
+
+    The server includes a RAG system that can store AWS resource scan data in a local vector database
+    and enable natural language queries. Use these tools:
+
+    - `query_resources_rag()` - Query resources using natural language (e.g., "unmanaged S3 buckets")
+    - `get_rag_stats()` - Get RAG system statistics
+    - `clear_rag_cache()` - Clear stored data
+
+    Example queries: "security sensitive resources", "expensive RDS instances", "public facing resources"
     """,
     dependencies=['pydantic', 'loguru', 'boto3', 'botocore'],
 )
@@ -432,10 +455,6 @@ async def list_resources_by_filter(
         default=None,
         description='Filter by specific resource identifier (e.g., "my-bucket-name")',
     ),
-    resource_scan_id: str | None = Field(
-        default=None,
-        description='Resource scan ID to use for filtering resources. If not provided, the latest completed scan will be used.',
-    ),
     resource_type_prefix: str | None = Field(
         default=None,
         description='Filter by resource type prefix (e.g., "AWS::S3::" to get all S3 resources)',
@@ -447,7 +466,7 @@ async def list_resources_by_filter(
     ),
     limit: int = Field(
         default=100,
-        description='Maximum number of resources to return',
+        description='Maximum number of resources to return (default: 100, max: 100 due to AWS API limits)',
     ),
     next_token: str | None = Field(
         default=None, description='Pagination token from previous response to get next page'
@@ -463,11 +482,10 @@ async def list_resources_by_filter(
     to use the filtering parameters to reduce the number of resources returned,
 
     This tool uses AWS CloudFormation's resource scan API with server-side filtering.
+    All parameters are optional except for the ResourceScanId (automatically handled).
 
     Parameters:
         resource_identifier: Filter by specific resource identifier (optional)
-        resource_scan_id: Resource scan ID to use for filtering resources. (optional)
-                           If not provided, the latest completed scan will be used even if it's partial or full scan.
         resource_type_prefix: Filter by resource type prefix (optional)
         tag_key: Filter resources by tag key (optional)
         tag_value: Filter resources by tag value (optional, requires tag_key)
@@ -480,7 +498,6 @@ async def list_resources_by_filter(
     """
     return await list_resources_by_filter_impl(
         resource_identifier=resource_identifier,
-        resource_scan_id=resource_scan_id,
         resource_type_prefix=resource_type_prefix,
         tag_key=tag_key,
         tag_value=tag_value,
@@ -495,10 +512,6 @@ async def list_related_resources(
     resources: list = Field(
         description='List of resources to find related resources for. Each resource should have resource_type and resource_identifier keys.'
     ),
-    resource_scan_id: str | None = Field(
-        default=None,
-        description='Resource scan ID to use for finding related resources. If not provided, the latest completed scan will be used.',
-    ),
     max_results: int = Field(
         default=100,
         description='Maximum number of related resources to return (default: 100, max: 100 due to AWS API limits)',
@@ -510,18 +523,14 @@ async def list_related_resources(
         description='The AWS region that the operation should be performed in', default=None
     ),
 ) -> dict:
-    """List AWS resources related to the specified list of resources or resource.
+    """List AWS resources related to the specified resources.
 
     This tool uses AWS CloudFormation's list_resource_scan_related_resources API
     to find resources that are related to the specified input resources.
 
-    Note: Call with one resource at a time if you want explicitly related resources
-
     Parameters:
         resources: List of resources to find related resources for. Each resource should have
                   'resource_type' and 'resource_identifier' keys. Maximum 100 resources.
-        resource_scan_id: Resource scan ID to use for finding related resources.
-                         If not provided, the latest completed scan will be used even if it's partial or full scan.
         max_results: Maximum number of related resources to return (1-100, AWS API limit)
         next_token: AWS pagination token from previous response (optional)
         region: AWS region to use (optional)
@@ -538,11 +547,7 @@ async def list_related_resources(
         ]
     """
     return await list_related_resources_impl(
-        resources=resources,
-        resource_scan_id=resource_scan_id,
-        max_results=max_results,
-        next_token=next_token,
-        region=region,
+        resources=resources, max_results=max_results, next_token=next_token, region=region
     )
 
 
@@ -578,6 +583,9 @@ async def start_resource_scan(
 @mcp.tool()
 async def analyze_stack(
     stack_name: str = Field(description='The name of the CloudFormation stack to analyze'),
+    store_in_rag: bool = Field(
+        description='Whether to store the analysis results in RAG', default=True
+    ),
     region: str | None = Field(
         description='The AWS region that the operation should be performed in', default=None
     ),
@@ -587,13 +595,11 @@ async def analyze_stack(
     Parameters:
         stack_name: The name of the CloudFormation stack to analyze
         region: AWS region to use (e.g., "us-east-1", "us-west-2")
+        store_in_rag: Specify if you want to store account details in rag locally
 
     Returns:
-        Detailed information about the stack and its resources in three distinct sections:
-        1. Resources in the given stack
-        2. Performs analysis on stack resources against a resource scan
-        3. Related resources that are not managed by CloudFormation
-        4. Related resources that are managed by different stacks
+        Complete stack analysis results without automatically storing in RAG. The user can
+        separately query RAG if they wish using query_resources_rag.
 
     Raises:
         ClientError: If the stack name is not provided or if the stack does not exist in the specified region.
@@ -604,11 +610,13 @@ async def analyze_stack(
         raise ClientError('Please provide a stack name')
 
     try:
-        # Initialize the stack analyzer
-        analyzer = StackAnalyzer(region or 'us-east-1')  # Provide a default region
+        target_region = region or 'us-east-1'
 
-        # Get stack analysis
-        stack_analysis = analyzer.analyze_stack(stack_name)
+        # Initialize the stack analyzer
+        analyzer = StackAnalyzer(target_region)
+
+        # Get stack analysis WITHOUT storing in RAG by setting store_in_rag to False
+        stack_analysis = analyzer.analyze_stack(stack_name, store_in_rag=store_in_rag)
 
         # Check if there was an error in the analysis
         if 'error' in stack_analysis:
@@ -619,89 +627,272 @@ async def analyze_stack(
                 )
             else:
                 raise ClientError(error_message)
+
         # Get best practices
         best_practices = StackAnalyzer.get_best_cfn_practices()
 
-        # Extract the resources data for better structure
-        resources_data = stack_analysis.get('resources', {})
-        related_resources = stack_analysis.get('related_resources', [])
-
-        # Enhance related resources with summary for better Q analysis
-        related_resources_summary = {
-            'total_count': len(related_resources),
-            'resource_types': {},
-            'sample_resources': related_resources if related_resources else [],
-            'description': 'Resources that are related to stack resources but not managed by this stack',
-        }
-
-        # Categorize related resources by type
-        for resource in related_resources:
-            resource_type = resource.get('ResourceType', 'Unknown')
-            if resource_type not in related_resources_summary['resource_types']:
-                related_resources_summary['resource_types'][resource_type] = 0
-            related_resources_summary['resource_types'][resource_type] += 1
-
-        result = {
-            'stack_info': stack_analysis.get('stack_info'),
+        # Return the summarized stack analysis results
+        return {
+            'message': f'Stack analysis for **{stack_name}** completed successfully.',
+            'note': 'Analysis results are returned directly without being stored in RAG. Use query_resources_rag separately if needed.',
+            'stack_info': stack_analysis.get('stack_info', {}),
             'stack_status': stack_analysis.get('stack_status'),
             'creation_time': stack_analysis.get('creation_time'),
             'last_updated_time': stack_analysis.get('last_updated_time'),
             'outputs': stack_analysis.get('outputs', []),
             'parameters': stack_analysis.get('parameters', []),
-            # Stack resource matching results
-            'prompt': f'Analyze the CloudFormation stack "{stack_name}" and its resources Offer insights on the stack resources, related resources, and best practices.',
-            'stack_name': resources_data.get('stack_name'),
-            'resource_scan_id': resources_data.get('resource_scan_id'),
-            'matched_resources': resources_data.get('matched_resources', []),
-            'unmatched_resources': resources_data.get('unmatched_resources', []),
-            # Enhanced related resources section for better Q analysis
-            'related_resources': related_resources,
-            'related_resources_summary': related_resources_summary,
-            # Account-wide resource summary
-            'account_summary': stack_analysis.get('account_summary', {}),
-            'best_practices': best_practices,
-            # Analysis highlights for Q to focus on
-            'analysis_highlights': {
-                'stack_resources': {
-                    'total_in_stack': len(resources_data.get('matched_resources', []))
-                    + len(resources_data.get('unmatched_resources', [])),
-                    'matched_in_scan': len(resources_data.get('matched_resources', [])),
-                    'unmatched_in_scan': len(resources_data.get('unmatched_resources', [])),
-                    'match_percentage': round(
-                        (
-                            len(resources_data.get('matched_resources', []))
-                            / max(
-                                1,
-                                len(resources_data.get('matched_resources', []))
-                                + len(resources_data.get('unmatched_resources', [])),
-                            )
-                        )
-                        * 100,
-                        2,
-                    ),
+            'resource_summary': stack_analysis.get(
+                'resource_summary',
+                {'total_resources': 0, 'managed_resources': 0, 'unmanaged_resources': 0},
+            ),
+            'related_resources_summary': stack_analysis.get(
+                'related_resources_summary',
+                {
+                    'total_resources': 0,
+                    'managed_resources': 0,
+                    'unmanaged_resources': 0,
+                    'by_product_type': [],
                 },
-                'related_resources': {
-                    'total_found': len(related_resources),
-                    'unique_types': len(related_resources_summary['resource_types']),
-                    'description': 'These are AWS resources that have relationships with your stack resources but are not directly managed by this CloudFormation stack',
-                },
-                'account_overview': {
-                    'total_resources': stack_analysis.get('account_summary', {})
-                    .get('overall_summary', {})
-                    .get('total_resources', 0),
-                    'unmanaged_percentage': stack_analysis.get('account_summary', {})
-                    .get('overall_summary', {})
-                    .get('unmanaged_percentage', 0),
-                    'managed_percentage': stack_analysis.get('account_summary', {})
-                    .get('overall_summary', {})
-                    .get('managed_percentage', 0),
-                },
+            ),
+            'account_summary': {
+                'overall_summary': stack_analysis.get('account_summary', {}).get(
+                    'overall_summary', {}
+                ),
+                'scan_metadata': stack_analysis.get('account_summary', {}).get(
+                    'scan_metadata', {}
+                ),
             },
+            'template_generation_info': {
+                'message': 'IMPORTANT: Template Generated for Unmanaged Resources',
+                'template_id': stack_analysis.get('augment_recommendation', ''),
+                'location_info': ' Generated in your AWS account and available in your directory',
+                'action_required': 'Check your directory and AWS Console to review the generated template for augmenting related unmanaged resources into CloudFormation management',
+            },
+            'augment_recommendation': stack_analysis.get('augment_recommendation', ''),
+            'related_unmanaged_count': stack_analysis.get('related_unmanaged_count', 0),
+            'best_practices': best_practices,
         }
 
-        return result
     except Exception as e:
         raise ClientError(f'Error analyzing stack "{stack_name}": {str(e)}')
+
+
+@mcp.tool()
+async def propose_new_stacks(
+    product_type: str | None = Field(
+        default=None,
+        description='The AWS product type to filter resources by (e.g., "Compute", "Storage", "Networking"). If not provided, all product types will be included.',
+    ),
+    create_templates: bool = Field(
+        default=False,
+        description='Whether to create actual CloudFormation templates for the proposal',
+    ),
+    region: str | None = Field(
+        default=None, description='The AWS region that the operation should be performed in'
+    ),
+) -> dict:
+    """Propose new stacks with resource limits and template generation.
+
+    This tool categorizes unmanaged resources using AWS service categories,
+    enforces a 450 resource limit per stack (AWS template generation API limit), and optionally
+    creates actual CloudFormation templates for the proposed stack.
+
+    To get resource distribution among new stacks proposals, this tool will return:
+    1. Resource counts and distribution when create_templates=False
+    2. Generated CloudFormation templates when create_templates=True
+
+    This tool is useful for managing unmanaged resources and creating templates for
+    new stacks.
+    Parameters:
+        product_type: The AWS product type to filter resources by (e.g., "Compute", "Storage", "Networking", "Security").
+                      If not provided, resources will be grouped and separated by all available product types.
+        create_templates: Whether to create actual CloudFormation templates for the proposal
+        region: AWS region to use (e.g., "us-east-1", "us-west-2")
+
+    Returns:
+        Dict containing summary statistics and the stack proposals grouped by product type with optional templates
+
+    """
+    try:
+        # Initialize the stack analyzer and recommendation generator
+        target_region = region or 'us-east-1'
+
+        # Initialize recommendation generator
+        recommendation_generator = RecommendationGenerator(region=target_region)
+
+        # Generate stack proposals for the specified product type
+        result = recommendation_generator.propose_new_stacks_by_product_type(
+            product_type=product_type, create_templates=create_templates
+        )
+
+        # Highlight template generation if enabled
+        if create_templates:
+            successful_templates = 0
+            if 'summary' in result:
+                successful_templates = result['summary'].get('successful_templates', 0)
+            elif 'grouped_proposals' in result:
+                # Count successful templates across all product types
+                for product_proposals in result['grouped_proposals'].values():
+                    successful_templates += sum(
+                        1 for p in product_proposals if p.get('template_status') == 'COMPLETE'
+                    )
+
+            # Add template generation highlight to result
+            result['template_generation_info'] = {
+                'message': ' CloudFormation Templates Generated!',
+                'successful_templates': successful_templates,
+                'location_info': ' Templates saved to your working directory',
+                'action_required': ' Review generated templates and deploy using AWS CLI or Console',
+            }
+
+        return result
+
+    except Exception as e:
+        raise ClientError(f'Error creating stack proposals: {str(e)}')
+
+
+# RAG Tools
+@mcp.tool()
+async def query_resources_rag(
+    query: str = Field(
+        description='Natural language query about AWS resources (e.g., "unmanaged S3 buckets", "security sensitive resources")'
+    ),
+    region: str | None = Field(
+        description='Optional region filter to limit results to specific region', default=None
+    ),
+    limit: int = Field(
+        description='Maximum number of results to return (default: 5, max: 20)', default=5
+    ),
+) -> dict:
+    """Query stored AWS resources using natural language.
+
+    This tool allows you to ask natural language questions about your AWS resources
+    that have been stored in the RAG system. The system will find relevant resources
+    and return them with context.
+
+    Parameters:
+        query: Natural language query about resources
+        region: Optional region filter
+        limit: Number of results to return
+
+    Returns:
+        Matching resources with similarity scores and metadata
+
+    Examples:
+        - "unmanaged S3 buckets"
+        - "security sensitive resources in us-east-1"
+        - "expensive RDS instances"
+        - "public facing resources"
+        - "compliance critical resources"
+    """
+    if not RAG_AVAILABLE:
+        raise ClientError(
+            'RAG system dependencies not available. Please install: '
+            'pip install chromadb sentence-transformers'
+        )
+
+    if not query:
+        raise ClientError('Please provide a query to search for resources')
+
+    # Validate limit
+    if limit < 1 or limit > 20:
+        raise ClientError('limit must be between 1 and 20')
+
+    try:
+        # Query the RAG system
+        if get_rag_instance is None:
+            raise ClientError('RAG system not available')
+        rag = get_rag_instance()
+        result = rag.query(query, region or '', limit)
+
+        return result
+
+    except Exception as e:
+        return {
+            'status': 'error',
+            'message': f'Failed to query RAG system: {str(e)}',
+            'error': str(e),
+            'results': [],
+        }
+
+
+@mcp.tool()
+async def clear_rag_cache(
+    region: str | None = Field(
+        description='Region to clear cache for, or None to clear all regions', default=None
+    ),
+) -> dict:
+    """Clear RAG cache for a region or all regions.
+
+    This tool removes stored resource data from the RAG system. Use this when
+    you want to refresh the data or clean up storage.
+
+    Parameters:
+        region: Region to clear, or None for all regions
+
+    Returns:
+        Status of the clear operation
+    """
+    if not RAG_AVAILABLE:
+        raise ClientError(
+            'RAG system dependencies not available. Please install: '
+            'pip install chromadb sentence-transformers'
+        )
+
+    try:
+        # Clear the RAG cache
+        if get_rag_instance is None:
+            return {
+                'status': 'error',
+                'message': 'RAG system not available',
+            }
+        rag = get_rag_instance()
+        result = rag.clear_cache()
+        return result
+
+    except Exception as e:
+        return {
+            'status': 'error',
+            'message': f'Failed to clear RAG cache: {str(e)}',
+            'error': str(e),
+        }
+
+
+@mcp.tool()
+async def get_rag_stats() -> dict:
+    """Get RAG system statistics and health information.
+
+    Returns information about the RAG system including number of stored documents,
+    scans, storage location, and other metadata.
+
+    Returns:
+        RAG system statistics
+    """
+    if not RAG_AVAILABLE:
+        return {
+            'status': 'unavailable',
+            'message': 'RAG system dependencies not available. Please install: pip install chromadb sentence-transformers',
+            'total_documents': 0,
+            'stored_scans': 0,
+        }
+
+    try:
+        # Get RAG statistics
+        if get_rag_instance is None:
+            return {
+                'status': 'error',
+                'message': 'RAG system not available',
+            }
+        rag = get_rag_instance()
+        result = rag.get_stats()
+        return result
+
+    except Exception as e:
+        return {
+            'status': 'error',
+            'message': f'Failed to get RAG statistics: {str(e)}',
+            'error': str(e),
+        }
 
 
 def main():

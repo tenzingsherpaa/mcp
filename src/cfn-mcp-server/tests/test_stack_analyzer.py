@@ -33,7 +33,12 @@ class TestStackAnalyzerPytest:
         return MagicMock()
 
     @pytest.fixture
-    def stack_analyzer(self, mock_cfn_utils, mock_resource_matcher):
+    def mock_rag_instance(self):
+        """Create a mock RAG instance."""
+        return MagicMock()
+
+    @pytest.fixture
+    def stack_analyzer(self, mock_cfn_utils, mock_resource_matcher, mock_rag_instance):
         """Create StackAnalyzer with mocked dependencies."""
         # Create the analyzer first
         analyzer = StackAnalyzer(region='us-east-1')
@@ -41,6 +46,7 @@ class TestStackAnalyzerPytest:
         # Then manually set the mocks
         analyzer.cfn_utils = mock_cfn_utils
         analyzer.resource_matcher = mock_resource_matcher
+        analyzer._rag_instance = mock_rag_instance
 
         return analyzer
 
@@ -65,7 +71,7 @@ class TestStackAnalyzerPytest:
             assert isinstance(best_practices[key], str)
 
     def test_analyze_stack_success_pytest(
-        self, stack_analyzer, mock_cfn_utils, mock_resource_matcher
+        self, stack_analyzer, mock_cfn_utils, mock_resource_matcher, mock_rag_instance
     ):
         """Test analyzing a stack successfully."""
         stack_name = 'test-stack'
@@ -73,6 +79,7 @@ class TestStackAnalyzerPytest:
         # Manually set the mocks on the stack_analyzer instance
         stack_analyzer.cfn_utils = mock_cfn_utils
         stack_analyzer.resource_matcher = mock_resource_matcher
+        stack_analyzer._rag_instance = mock_rag_instance
 
         # Mock describe_stack
         stack_details = {
@@ -86,20 +93,18 @@ class TestStackAnalyzerPytest:
         mock_cfn_utils.describe_stack.return_value = stack_details
 
         # Mock resource_matcher.match_stack_to_scan
-        matched_resources = [
-            MagicMock(
-                resource_type='AWS::S3::Bucket',
-                resource_identifier={'BucketName': 'my-bucket'},
-                logical_resource_id='MyBucket',
-                physical_resource_id='my-bucket',
-                resource_status='CREATE_COMPLETE',
-                matched=True,
-            )
-        ]
+        mock_resource = MagicMock()
+        mock_resource.scanned_resource_type = 'AWS::S3::Bucket'
+        mock_resource.resource_identifier = {'BucketName': 'my-bucket'}
+        mock_resource.logical_resource_id = 'MyBucket'
+        mock_resource.physical_resource_id = 'my-bucket'
+        mock_resource.resource_status = 'CREATE_COMPLETE'
+        mock_resource.matched = True
+
         resource_analysis_results = {
             'stack_name': stack_name,
             'resource_scan_id': 'test-scan-id',
-            'matched_resources': matched_resources,
+            'matched_resources': [mock_resource],
             'unmatched_resources': [],
         }
         mock_resource_matcher.match_stack_to_scan.return_value = resource_analysis_results
@@ -114,40 +119,66 @@ class TestStackAnalyzerPytest:
         ]
         mock_resource_matcher.get_related_resources.return_value = related_resources
 
-        # Mock account_resource_summary
-        with patch.object(stack_analyzer, 'account_resource_summary') as mock_account_summary:
-            account_summary = {
-                'overall_summary': {
-                    'total_resources': 100,
-                    'managed_resources': 80,
-                    'unmanaged_resources': 20,
-                    'managed_percentage': 80.0,
-                    'unmanaged_percentage': 20.0,
+        # Mock _generate_augmentation_recommendation
+        with patch.object(
+            stack_analyzer, '_generate_augmentation_recommendation'
+        ) as mock_augmentation:
+            mock_augment_rec = MagicMock()
+            mock_augment_rec.generated_template_id = 'template-id-123'
+            mock_augment_rec.template_body = '{"Resources": {}}'
+            mock_augmentation.return_value = (mock_augment_rec, related_resources)
+
+            # Mock account_resource_summary
+            with patch.object(stack_analyzer, 'account_resource_summary') as mock_account_summary:
+                account_summary = {
+                    'overall_summary': {
+                        'total_resources': 100,
+                        'managed_resources': 80,
+                        'unmanaged_resources': 20,
+                        'managed_percentage': 80.0,
+                        'unmanaged_percentage': 20.0,
+                    },
+                    'scan_metadata': {
+                        'scan_id': 'test-scan-id',
+                        'scan_time': '2023-01-01T00:00:00Z',
+                    },
                 }
-            }
-            mock_account_summary.return_value = account_summary
+                mock_account_summary.return_value = account_summary
 
-            # Call the method to test
-            result = stack_analyzer.analyze_stack(stack_name)
+                # Mock _store_analysis_in_rag
+                with patch.object(stack_analyzer, '_store_analysis_in_rag') as mock_store_rag:
+                    # Call the method to test with store_in_rag=True (default)
+                    result = stack_analyzer.analyze_stack(stack_name)
 
-            # Verify the result
-            assert result['stack_info'] == stack_details
-            assert result['stack_status'] == 'CREATE_COMPLETE'
-            assert result['creation_time'] == '2023-01-01T00:00:00Z'
-            assert result['last_updated_time'] == '2023-01-02T00:00:00Z'
-            assert result['outputs'] == [{'OutputKey': 'BucketName', 'OutputValue': 'my-bucket'}]
-            assert result['parameters'] == [
-                {'ParameterKey': 'Environment', 'ParameterValue': 'test'}
-            ]
-            assert result['resources'] == resource_analysis_results
-            assert result['related_resources'] == related_resources
-            assert result['account_summary'] == account_summary
+                    # Verify the result
+                    assert result['stack_info'] == stack_details
+                    assert result['stack_status'] == 'CREATE_COMPLETE'
+                    assert result['creation_time'] == '2023-01-01T00:00:00Z'
+                    assert result['last_updated_time'] == '2023-01-02T00:00:00Z'
+                    assert result['outputs'] == [
+                        {'OutputKey': 'BucketName', 'OutputValue': 'my-bucket'}
+                    ]
+                    assert result['parameters'] == [
+                        {'ParameterKey': 'Environment', 'ParameterValue': 'test'}
+                    ]
+                    assert 'resource_summary' in result
+                    assert 'related_resources_summary' in result
+                    assert 'account_summary' in result
+                    assert result['augment_recommendation'] == 'template-id-123'
+                    assert result['related_unmanaged_count'] == len(related_resources)
 
-            # Verify the method calls
-            mock_cfn_utils.describe_stack.assert_called_once_with(stack_name)
-            mock_resource_matcher.match_stack_to_scan.assert_called_once_with(stack_name)
-            mock_resource_matcher.get_related_resources.assert_called_once()
-            mock_account_summary.assert_called_once()
+                    # Verify the method calls
+                    mock_cfn_utils.describe_stack.assert_called_once_with(stack_name)
+                    mock_resource_matcher.match_stack_to_scan.assert_called_once_with(stack_name)
+                    mock_resource_matcher.get_related_resources.assert_called_once()
+                    mock_augmentation.assert_called_once()
+                    mock_account_summary.assert_called_once()
+                    mock_store_rag.assert_called_once()
+
+                    # Test with store_in_rag=False
+                    mock_store_rag.reset_mock()
+                    result = stack_analyzer.analyze_stack(stack_name, store_in_rag=False)
+                    mock_store_rag.assert_not_called()
 
     def test_analyze_stack_error_pytest(self, stack_analyzer, mock_cfn_utils):
         """Test analyzing a stack with error."""
@@ -165,8 +196,8 @@ class TestStackAnalyzerPytest:
         assert 'error' in result
         assert error_msg in result['error']
 
-    def test_account_resource_summary_success(self, stack_analyzer, mock_cfn_utils):
-        """Test account_resource_summary method success."""
+    def test_account_resource_summary_success_full(self, stack_analyzer, mock_cfn_utils):
+        """Test account_resource_summary method with full response."""
         # Manually set the mock
         stack_analyzer.cfn_utils = mock_cfn_utils
 
@@ -196,8 +227,8 @@ class TestStackAnalyzerPytest:
         ]
         mock_cfn_utils.list_resource_scan_resources.return_value = scan_results
 
-        # Call the method to test
-        result = stack_analyzer.account_resource_summary()
+        # Call the method to test with minimal=False (default)
+        result = stack_analyzer.account_resource_summary(minimal=False)
 
         # Verify the result
         assert 'scan_metadata' in result
@@ -233,6 +264,58 @@ class TestStackAnalyzerPytest:
         assert 'unmanaged_resources_detail' in result
         assert len(result['unmanaged_resources_detail']) == 2
 
+    def test_account_resource_summary_minimal(self, stack_analyzer, mock_cfn_utils):
+        """Test account_resource_summary method with minimal response."""
+        # Manually set the mock
+        stack_analyzer.cfn_utils = mock_cfn_utils
+
+        # Set a resource scan ID directly
+        mock_cfn_utils.resource_scan_id = 'test-scan-id'
+
+        # Mock list_resource_scan_resources
+        scan_results = [
+            {
+                'ResourceType': 'AWS::S3::Bucket',
+                'ResourceIdentifier': {'BucketName': 'bucket1'},
+                'ManagedByStack': True,
+                'ResourceStatus': 'CREATE_COMPLETE',
+            },
+            {
+                'ResourceType': 'AWS::S3::Bucket',
+                'ResourceIdentifier': {'BucketName': 'bucket2'},
+                'ManagedByStack': False,
+                'ResourceStatus': 'CREATE_COMPLETE',
+            },
+            {
+                'ResourceType': 'AWS::Lambda::Function',
+                'ResourceIdentifier': {'FunctionName': 'function1'},
+                'ManagedByStack': False,
+                'ResourceStatus': 'CREATE_COMPLETE',
+            },
+        ]
+        mock_cfn_utils.list_resource_scan_resources.return_value = scan_results
+
+        # Call the method with minimal=True
+        result = stack_analyzer.account_resource_summary(minimal=True)
+
+        # Verify the minimal result
+        assert 'scan_metadata' in result
+        assert result['scan_metadata']['scan_id'] == 'test-scan-id'
+        assert result['scan_metadata']['total_resources_scanned'] == 3
+
+        assert 'overall_summary' in result
+        assert result['overall_summary']['total_resources'] == 3
+        assert result['overall_summary']['managed_resources'] == 1
+        assert result['overall_summary']['unmanaged_resources'] == 2
+        assert result['overall_summary']['managed_percentage'] == pytest.approx(33.33, 0.01)
+        assert result['overall_summary']['unmanaged_percentage'] == pytest.approx(66.67, 0.01)
+
+        # These should not be present in minimal response
+        assert 'resources_by_type' not in result
+        assert 'resources_by_type_ranked' not in result
+        assert 'top_unmanaged_types' not in result
+        assert 'unmanaged_resources_detail' not in result
+
     def test_validate_resource_scan_id_with_id(self, stack_analyzer, mock_cfn_utils):
         """Test _validate_resource_scan_id when ID already exists."""
         mock_cfn_utils.resource_scan_id = 'existing-scan-id'
@@ -253,17 +336,185 @@ class TestStackAnalyzerPytest:
         # Mock list_resource_scans
         mock_cfn_utils.list_resource_scans.return_value = [{'ResourceScanId': 'new-scan-id'}]
 
-        # Define a side effect to set the resource_scan_id when list_resource_scans is called
-        def side_effect():
-            mock_cfn_utils.resource_scan_id = 'new-scan-id'
-            return [{'ResourceScanId': 'new-scan-id'}]
-
-        mock_cfn_utils.list_resource_scans.side_effect = side_effect
-
         result = stack_analyzer._validate_resource_scan_id()
 
         assert result is True
         assert mock_cfn_utils.resource_scan_id == 'new-scan-id'
+
+    def test_store_analysis_in_rag(self, stack_analyzer, mock_rag_instance):
+        """Test storing analysis in RAG."""
+        # Mock data
+        stack_name = 'test-stack'
+        stack_details = {
+            'StackName': stack_name,
+            'CreationTime': '2023-01-01T00:00:00Z',
+            'LastUpdatedTime': '2023-01-02T00:00:00Z',
+        }
+        stack_resources = [
+            {'ResourceType': 'AWS::S3::Bucket', 'ResourceIdentifier': {'BucketName': 'my-bucket'}}
+        ]
+        related_resources = [
+            {
+                'ResourceType': 'AWS::IAM::Role',
+                'ResourceIdentifier': {'RoleName': 'my-role'},
+                'ManagedByStack': False,
+            }
+        ]
+        account_summary = {
+            'overall_summary': {
+                'total_resources': 10,
+                'managed_resources': 8,
+                'unmanaged_resources': 2,
+            }
+        }
+
+        mock_augment_rec = MagicMock()
+        mock_augment_rec.generated_template_id = 'template-id-123'
+        mock_augment_rec.template_body = '{"Resources": {}}'
+
+        # Mock the store_*_data methods
+        with patch.object(stack_analyzer, '_store_related_resources_data') as mock_store_related:
+            with patch.object(
+                stack_analyzer, '_store_account_resources_data'
+            ) as mock_store_account:
+                # Call the method
+                stack_analyzer._store_analysis_in_rag(
+                    stack_name,
+                    stack_details,
+                    stack_resources,
+                    related_resources,
+                    account_summary,
+                    mock_augment_rec,
+                    related_resources,
+                )
+
+                # Verify calls
+                mock_store_related.assert_called_once_with(
+                    stack_name, related_resources, '2023-01-02T00:00:00Z'
+                )
+                mock_store_account.assert_called_once_with(account_summary)
+
+    def test_summarize_resources_by_managed_status(self, stack_analyzer):
+        """Test summarizing resources by managed status."""
+        # Mock resource analysis results
+        mock_resource = MagicMock()
+        mock_resource.resource_type = 'AWS::S3::Bucket'
+        mock_resource.scanned_resource_type = 'AWS::S3::Bucket'
+
+        resource_analysis_results = {
+            'matched_resources': [mock_resource],
+            'unmanaged_resources': [],
+        }
+
+        result = stack_analyzer._summarize_resources_by_managed_status(resource_analysis_results)
+
+        assert result['total_resources'] == 1
+        assert result['managed_resources'] == 1
+        assert result['unmanaged_resources'] == 0
+        assert 'by_resource_type' in result
+
+    def test_summarize_related_resources(self, stack_analyzer):
+        """Test summarizing related resources."""
+        # Mock related resources
+        related_resources = [
+            {
+                'ResourceType': 'AWS::S3::Bucket',
+                'ResourceIdentifier': {'BucketName': 'bucket1'},
+                'ManagedByStack': True,
+            },
+            {
+                'ResourceType': 'AWS::IAM::Role',
+                'ResourceIdentifier': {'RoleName': 'role1'},
+                'ManagedByStack': False,
+            },
+        ]
+
+        # Mock _group_resources_by_product_type
+        with patch.object(stack_analyzer, '_group_resources_by_product_type') as mock_group:
+            mock_group.return_value = {
+                'Storage': [related_resources[0]],
+                'Security': [related_resources[1]],
+            }
+
+            result = stack_analyzer._summarize_related_resources(related_resources)
+
+            assert result['total_resources'] == 2
+            assert result['managed_resources'] == 1
+            assert result['unmanaged_resources'] == 1
+            assert 'by_product_type' in result
+            mock_group.assert_called_once_with(related_resources)
+
+    def test_store_related_resources_data(self, stack_analyzer, mock_rag_instance):
+        """Test storing related resources data in RAG."""
+        stack_name = 'test-stack'
+        last_updated_time = '2023-01-02T00:00:00Z'
+
+        # Mock related resources
+        related_resources = [
+            {
+                'ResourceType': 'AWS::S3::Bucket',
+                'ResourceIdentifier': {'BucketName': 'bucket1'},
+                'ManagedByStack': True,
+            },
+            {
+                'ResourceType': 'AWS::IAM::Role',
+                'ResourceIdentifier': {'RoleName': 'role1'},
+                'ManagedByStack': False,
+            },
+        ]
+
+        # Mock _store_rag_data
+        with patch.object(stack_analyzer, '_store_rag_data') as mock_store:
+            stack_analyzer._store_related_resources_data(
+                stack_name, related_resources, last_updated_time
+            )
+
+            # Check _store_rag_data was called with the correct data
+            mock_store.assert_called_once()
+            data = mock_store.call_args[0][0]
+            assert data['scan_metadata']['scan_id'] == f'related-{stack_name}'
+            assert data['scan_metadata']['end_time'] == last_updated_time
+            assert data['resources'] == related_resources
+            assert data['summary']['total_count'] == 2
+            assert data['summary']['managed_count'] == 1
+            assert data['summary']['unmanaged_count'] == 1
+
+    def test_group_resources_by_product_type(self, stack_analyzer):
+        """Test grouping resources by product type."""
+        # Mock related resources
+        related_resources = [
+            {
+                'ResourceType': 'AWS::S3::Bucket',
+                'ResourceIdentifier': {'BucketName': 'bucket1'},
+            },
+            {
+                'ResourceType': 'AWS::IAM::Role',
+                'ResourceIdentifier': {'RoleName': 'role1'},
+            },
+        ]
+
+        # Mock RecommendationGenerator
+        with patch(
+            'awslabs.cfn_mcp_server.stack_analysis.stack_analyzer.RecommendationGenerator'
+        ) as mock_rec_gen_class:
+            mock_rec_gen = MagicMock()
+            mock_rec_gen_class.return_value = mock_rec_gen
+
+            mock_rec_gen._categorize_resources_by_product_type.return_value = {
+                'Storage': [related_resources[0]],
+                'Security': [related_resources[1]],
+            }
+
+            result = stack_analyzer._group_resources_by_product_type(related_resources)
+
+            mock_rec_gen_class.assert_called_once_with(region='us-east-1')
+            mock_rec_gen._categorize_resources_by_product_type.assert_called_once_with(
+                resources=related_resources
+            )
+            assert 'Storage' in result
+            assert 'Security' in result
+            assert result['Storage'] == [related_resources[0]]
+            assert result['Security'] == [related_resources[1]]
 
 
 @pytest.mark.asyncio
@@ -281,14 +532,19 @@ class TestStackAnalyzerAsync:
             patch(
                 'awslabs.cfn_mcp_server.stack_analysis.stack_analyzer.ResourceAnalyzer'
             ) as mock_resource_analyzer_class,
+            patch(
+                'awslabs.cfn_mcp_server.stack_analysis.stack_analyzer.get_rag_instance'
+            ) as mock_get_rag_instance,
         ):
             # Create mock instances
             mock_cfn_utils = MagicMock()
             mock_resource_matcher = MagicMock()
+            mock_rag_instance = MagicMock()
 
             # Set up the return values for the mocks
             mock_cf_utils_class.return_value = mock_cfn_utils
             mock_resource_analyzer_class.return_value = mock_resource_matcher
+            mock_get_rag_instance.return_value = mock_rag_instance
 
             # Create the analyzer
             analyzer = StackAnalyzer(region='us-east-1')
@@ -296,6 +552,7 @@ class TestStackAnalyzerAsync:
             # Manually set the mocks to ensure they're used
             analyzer.cfn_utils = mock_cfn_utils
             analyzer.resource_matcher = mock_resource_matcher
+            analyzer._rag_instance = mock_rag_instance
 
             yield analyzer
 
