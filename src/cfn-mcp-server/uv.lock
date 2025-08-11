@@ -62,7 +62,6 @@ dependencies = [
     { name = "mcp", extra = ["cli"] },
     { name = "pydantic" },
     { name = "sentence-transformers" },
-    { name = "torch" },
 ]
 
 [package.dev-dependencies]
@@ -86,7 +85,6 @@ requires-dist = [
     { name = "mcp", extras = ["cli"], specifier = ">=1.6.0" },
     { name = "pydantic", specifier = ">=2.10.6" },
     { name = "sentence-transformers" },
-    { name = "torch", specifier = "==2.7.1" },
 ]
 
 [package.metadata.requires-dev]
