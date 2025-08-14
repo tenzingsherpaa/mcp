@@ -38,9 +38,35 @@ mcp = FastMCP(
     instructions="""
     # CloudFormation MCP
 
-    This MCP allows you to:
-    1. Read and List all of your AWS resources by the CloudFormation type name (e.g. AWS::S3::Bucket)
-    2. Create/Update/Delete your AWS resources
+    This MCP provides comprehensive AWS resource management capabilities through the following tools:
+
+    ## Resource Management Tools
+    1. **get_resource_schema_information** - Get schema information for an AWS resource type (e.g., AWS::S3::Bucket)
+    2. **list_resources** - List AWS resources of a specified type across your account
+    3. **get_resource** - Get detailed information about a specific AWS resource
+    4. **create_resource** - Create new AWS resources with specified properties
+    5. **update_resource** - Update existing AWS resources using RFC 6902 JSON Patch operations
+    6. **delete_resource** - Delete AWS resources from your account
+    7. **get_resource_request_status** - Track the status of long-running resource operations
+
+    ## Template and Infrastructure Management Tools
+    8. **create_template** - Generate CloudFormation templates from existing resources using IaC Generator API
+    9. **analyze_stack** - Analyze this {stack name} and return detailed resource information
+    10. **propose_new_stacks** - Propose new stack in your AWS account unmanaged resources and optional template generation
+
+    ## Resource Discovery and Analysis Tools
+    11. **list_resources_by_filter** - List AWS resources with advanced filtering by type, tags, and identifiers
+    12. **list_related_resources** - Find AWS resources related to specified resources using dependency analysis
+    13. **start_resource_scan** - Initiate resource scans for specific resource types or entire AWS account
+
+    ## Key Capabilities
+    - Read and manage all AWS resources by CloudFormation type name (e.g., AWS::S3::Bucket, AWS::RDS::DBInstance)
+    - Create, update, and delete AWS resources with proper error handling and progress tracking
+    - Generate CloudFormation templates from existing unmanaged resources
+    - Analyze CloudFormation stacks and discover related resources
+    - Propose optimal stack structures for better resource organization
+    - Advanced resource filtering and discovery capabilities
+    - Support for long-running operations with status tracking
     """,
     dependencies=['pydantic', 'loguru', 'boto3', 'botocore'],
 )
