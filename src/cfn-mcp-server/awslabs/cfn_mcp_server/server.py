@@ -27,13 +27,14 @@ from awslabs.cfn_mcp_server.impl.tools import (
     list_resources_by_filter_impl,
 )
 from awslabs.cfn_mcp_server.schema_manager import schema_manager
+from awslabs.cfn_mcp_server.stack_analysis.recommendation_generator import RecommendationGenerator
 from awslabs.cfn_mcp_server.stack_analysis.stack_analyzer import StackAnalyzer
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
 
 mcp = FastMCP(
-    'awslabs.cfn-mcp-server',
+    'cfn-mcp-server',
     instructions="""
     # CloudFormation MCP
 
@@ -461,9 +462,7 @@ async def list_resources_by_filter(
     To preserve tokens usage, this tool allows you to filter resources by type resourcetypeprefix,
     tag key, and tag value. It returns a paginated list of resource identifiers. It is recommended
     to use the filtering parameters to reduce the number of resources returned,
-
     This tool uses AWS CloudFormation's resource scan API with server-side filtering.
-
     Parameters:
         resource_identifier: Filter by specific resource identifier (optional)
         resource_scan_id: Resource scan ID to use for filtering resources. (optional)
@@ -516,7 +515,6 @@ async def list_related_resources(
     to find resources that are related to the specified input resources.
 
     Note: Call with one resource at a time if you want explicitly related resources
-
     Parameters:
         resources: List of resources to find related resources for. Each resource should have
                   'resource_type' and 'resource_identifier' keys. Maximum 100 resources.
@@ -528,7 +526,6 @@ async def list_related_resources(
 
     Returns:
         Related resources grouped by managed/unmanaged status with pagination metadata
-
     Example:
         resources = [
             {
@@ -589,11 +586,8 @@ async def analyze_stack(
         region: AWS region to use (e.g., "us-east-1", "us-west-2")
 
     Returns:
-        Detailed information about the stack and its resources in three distinct sections:
-        1. Resources in the given stack
-        2. Performs analysis on stack resources against a resource scan
-        3. Related resources that are not managed by CloudFormation
-        4. Related resources that are managed by different stacks
+        Complete stack analysis results without automatically storing in RAG. The user can
+        separately query RAG if they wish using query_resources_rag.
 
     Raises:
         ClientError: If the stack name is not provided or if the stack does not exist in the specified region.
@@ -604,8 +598,10 @@ async def analyze_stack(
         raise ClientError('Please provide a stack name')
 
     try:
+        target_region = region or 'us-east-1'
+
         # Initialize the stack analyzer
-        analyzer = StackAnalyzer(region or 'us-east-1')  # Provide a default region
+        analyzer = StackAnalyzer(target_region)
 
         # Get stack analysis
         stack_analysis = analyzer.analyze_stack(stack_name)
@@ -619,89 +615,128 @@ async def analyze_stack(
                 )
             else:
                 raise ClientError(error_message)
+
         # Get best practices
         best_practices = StackAnalyzer.get_best_cfn_practices()
 
-        # Extract the resources data for better structure
-        resources_data = stack_analysis.get('resources', {})
-        related_resources = stack_analysis.get('related_resources', [])
-
-        # Enhance related resources with summary for better Q analysis
-        related_resources_summary = {
-            'total_count': len(related_resources),
-            'resource_types': {},
-            'sample_resources': related_resources if related_resources else [],
-            'description': 'Resources that are related to stack resources but not managed by this stack',
-        }
-
-        # Categorize related resources by type
-        for resource in related_resources:
-            resource_type = resource.get('ResourceType', 'Unknown')
-            if resource_type not in related_resources_summary['resource_types']:
-                related_resources_summary['resource_types'][resource_type] = 0
-            related_resources_summary['resource_types'][resource_type] += 1
-
-        result = {
-            'stack_info': stack_analysis.get('stack_info'),
+        # Return the summarized stack analysis results
+        return {
+            'message': f'Stack analysis for **{stack_name}** completed successfully.',
+            'note': 'Analysis results are returned directly without being stored in RAG. Use query_resources_rag separately if needed.',
+            'stack_info': stack_analysis.get('stack_info', {}),
             'stack_status': stack_analysis.get('stack_status'),
             'creation_time': stack_analysis.get('creation_time'),
             'last_updated_time': stack_analysis.get('last_updated_time'),
             'outputs': stack_analysis.get('outputs', []),
             'parameters': stack_analysis.get('parameters', []),
-            # Stack resource matching results
-            'prompt': f'Analyze the CloudFormation stack "{stack_name}" and its resources Offer insights on the stack resources, related resources, and best practices.',
-            'stack_name': resources_data.get('stack_name'),
-            'resource_scan_id': resources_data.get('resource_scan_id'),
-            'matched_resources': resources_data.get('matched_resources', []),
-            'unmatched_resources': resources_data.get('unmatched_resources', []),
-            # Enhanced related resources section for better Q analysis
-            'related_resources': related_resources,
-            'related_resources_summary': related_resources_summary,
-            # Account-wide resource summary
-            'account_summary': stack_analysis.get('account_summary', {}),
-            'best_practices': best_practices,
-            # Analysis highlights for Q to focus on
-            'analysis_highlights': {
-                'stack_resources': {
-                    'total_in_stack': len(resources_data.get('matched_resources', []))
-                    + len(resources_data.get('unmatched_resources', [])),
-                    'matched_in_scan': len(resources_data.get('matched_resources', [])),
-                    'unmatched_in_scan': len(resources_data.get('unmatched_resources', [])),
-                    'match_percentage': round(
-                        (
-                            len(resources_data.get('matched_resources', []))
-                            / max(
-                                1,
-                                len(resources_data.get('matched_resources', []))
-                                + len(resources_data.get('unmatched_resources', [])),
-                            )
-                        )
-                        * 100,
-                        2,
-                    ),
+            'resource_summary': stack_analysis.get(
+                'resource_summary',
+                {'total_resources': 0, 'managed_resources': 0, 'unmanaged_resources': 0},
+            ),
+            'related_resources_summary': stack_analysis.get(
+                'related_resources_summary',
+                {
+                    'total_resources': 0,
+                    'managed_resources': 0,
+                    'unmanaged_resources': 0,
+                    'by_product_type': [],
                 },
-                'related_resources': {
-                    'total_found': len(related_resources),
-                    'unique_types': len(related_resources_summary['resource_types']),
-                    'description': 'These are AWS resources that have relationships with your stack resources but are not directly managed by this CloudFormation stack',
-                },
-                'account_overview': {
-                    'total_resources': stack_analysis.get('account_summary', {})
-                    .get('overall_summary', {})
-                    .get('total_resources', 0),
-                    'unmanaged_percentage': stack_analysis.get('account_summary', {})
-                    .get('overall_summary', {})
-                    .get('unmanaged_percentage', 0),
-                    'managed_percentage': stack_analysis.get('account_summary', {})
-                    .get('overall_summary', {})
-                    .get('managed_percentage', 0),
-                },
+            ),
+            'account_summary': {
+                'overall_summary': stack_analysis.get('account_summary', {}).get(
+                    'overall_summary', {}
+                ),
+                'scan_metadata': stack_analysis.get('account_summary', {}).get(
+                    'scan_metadata', {}
+                ),
             },
+            'template_generation_info': {
+                'message': 'IMPORTANT: Template Generated for Unmanaged Resources',
+                'template_id': stack_analysis.get('augment_recommendation', ''),
+                'location_info': ' Generated in your AWS account and available in your directory',
+                'action_required': 'Check your directory and AWS Console to review the generated template for augmenting related unmanaged resources into CloudFormation management',
+            },
+            'augment_recommendation': stack_analysis.get('augment_recommendation', ''),
+            'related_unmanaged_count': stack_analysis.get('related_unmanaged_count', 0),
+            'best_practices': best_practices,
         }
 
-        return result
     except Exception as e:
         raise ClientError(f'Error analyzing stack "{stack_name}": {str(e)}')
+
+
+@mcp.tool()
+async def propose_new_stacks(
+    product_type: str | None = Field(
+        default=None,
+        description='The AWS product type to filter resources by (e.g., "Compute", "Storage", "Networking"). If not provided, all product types will be included.',
+    ),
+    create_templates: bool = Field(
+        default=False,
+        description='Whether to create actual CloudFormation templates for the proposal',
+    ),
+    region: str | None = Field(
+        default=None, description='The AWS region that the operation should be performed in'
+    ),
+) -> dict:
+    """Propose new stacks with resource limits and template generation.
+
+    This tool categorizes unmanaged resources using AWS service categories,
+    enforces a 450 resource limit per stack (AWS template generation API limit), and optionally
+    creates actual CloudFormation templates for the proposed stack.
+
+    To get resource distribution among new stacks proposals, this tool will return:
+    1. Resource counts and distribution when create_templates=False
+    2. Generated CloudFormation templates when create_templates=True
+
+    This tool is useful for managing unmanaged resources and creating templates for
+    new stacks.
+    Parameters:
+        product_type: The AWS product type to filter resources by (e.g., "Compute", "Storage", "Networking", "Security").
+                      If not provided, resources will be grouped and separated by all available product types.
+        create_templates: Whether to create actual CloudFormation templates for the proposal
+        region: AWS region to use (e.g., "us-east-1", "us-west-2")
+
+    Returns:
+        Dict containing summary statistics and the stack proposals grouped by product type with optional templates
+
+    """
+    try:
+        # Initialize the stack analyzer and recommendation generator
+        target_region = region or 'us-east-1'
+
+        # Initialize recommendation generator
+        recommendation_generator = RecommendationGenerator(region=target_region)
+
+        # Generate stack proposals for the specified product type
+        result = recommendation_generator.propose_new_stacks_by_product_type(
+            product_type=product_type, create_templates=create_templates
+        )
+
+        # Highlight template generation if enabled
+        if create_templates:
+            successful_templates = 0
+            if 'summary' in result:
+                successful_templates = result['summary'].get('successful_templates', 0)
+            elif 'grouped_proposals' in result:
+                # Count successful templates across all product types
+                for product_proposals in result['grouped_proposals'].values():
+                    successful_templates += sum(
+                        1 for p in product_proposals if p.get('template_status') == 'COMPLETE'
+                    )
+
+            # Add template generation highlight to result
+            result['template_generation_info'] = {
+                'message': ' CloudFormation Templates Generated!',
+                'successful_templates': successful_templates,
+                'location_info': ' Templates saved to your working directory',
+                'action_required': ' Review generated templates and deploy using AWS CLI or Console',
+            }
+
+        return result
+
+    except Exception as e:
+        raise ClientError(f'Error creating stack proposals: {str(e)}')
 
 
 def main():
