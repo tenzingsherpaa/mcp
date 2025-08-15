@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import logging
+import uuid
 from awslabs.cfn_mcp_server.aws_client import get_aws_client
 from awslabs.cfn_mcp_server.errors import ClientError, ServerError, handle_aws_api_error
 from typing import Any, Dict, List, Optional
@@ -354,8 +355,6 @@ class CloudFormationUtils:
         try:
             # Generate a unique template name if not provided
             if not generated_template_name:
-                import uuid
-
                 generated_template_name = f'augment-{stack_name}-{str(uuid.uuid4())[:8]}'
 
             logger.info(
@@ -363,7 +362,6 @@ class CloudFormationUtils:
             )
 
             if stack_name:
-                # The correct parameters for create_generated_template API
                 response = self.cfn_client.create_generated_template(
                     GeneratedTemplateName=generated_template_name,
                     Resources=resources,

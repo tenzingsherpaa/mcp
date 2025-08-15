@@ -62,8 +62,11 @@ class RecommendationGenerator:
     # Constants
     MAX_RESOURCES_PER_STACK = 450
     MAX_TEMPLATE_POLLING_ATTEMPTS = 30
-    TEMPLATE_POLLING_DELAY = 1
     DEFAULT_CATEGORY = 'Unknown'
+
+    # Delay settings for template polling
+    BASE_DELAY = 1  # Start with 1 second
+    MAX_DELAY = 30  # Maximum delay in seconds
 
     # Template statuses
     COMPLETE_STATUS = 'COMPLETE'
@@ -202,7 +205,9 @@ class RecommendationGenerator:
                     error_reason = status_response.get('StatusReason', 'Unknown error')
                     raise ServerError(f'Template generation failed: {error_reason}')
                 elif status in self.PENDING_STATUSES:
-                    time.sleep(self.TEMPLATE_POLLING_DELAY)
+                    # Simple progressive delay that increases with each attempt
+                    delay = min(self.BASE_DELAY + attempt, self.MAX_DELAY)
+                    time.sleep(delay)
                     continue
                 else:
                     raise ServerError(f'Unexpected template status: {status}')
@@ -212,7 +217,9 @@ class RecommendationGenerator:
                     raise ServerError(
                         f'Failed to get template after {max_attempts} attempts: {str(e)}'
                     )
-                time.sleep(1)
+                # Simple progressive delay
+                delay = min(self.BASE_DELAY + attempt, self.MAX_DELAY)
+                time.sleep(delay)
 
         raise ServerError(f'Template generation timed out after {max_attempts} attempts')
 
@@ -225,7 +232,23 @@ class RecommendationGenerator:
         try:
             scans = self.cfn_utils.list_resource_scans()
             if scans:
-                self.cfn_utils.resource_scan_id = scans[0].get('ResourceScanId')
+                # Prioritize FULL scans over partial scans
+                full_scans = [
+                    scan
+                    for scan in scans
+                    if scan.get('Status') == 'COMPLETE' and scan.get('ScanType') == 'FULL'
+                ]
+                if full_scans:
+                    self.cfn_utils.resource_scan_id = full_scans[0].get('ResourceScanId')
+                    logger.info(
+                        f'Using latest FULL resource scan with ID: {self.cfn_utils.resource_scan_id}'
+                    )
+                else:
+                    # Fall back to the latest scan if no FULL scan is available
+                    self.cfn_utils.resource_scan_id = scans[0].get('ResourceScanId')
+                    logger.info(
+                        f'No FULL scan found, using latest scan with ID: {self.cfn_utils.resource_scan_id}'
+                    )
                 logger.info(
                     f'Using latest resource scan with ID: {self.cfn_utils.resource_scan_id}'
                 )

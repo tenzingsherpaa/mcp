@@ -34,7 +34,7 @@ from pydantic import Field
 
 
 mcp = FastMCP(
-    'cfn-mcp-server',
+    'awslabs.cfn-mcp-server',
     instructions="""
     # CloudFormation MCP
 
@@ -52,7 +52,7 @@ mcp = FastMCP(
     ## Template and Infrastructure Management Tools
     8. **create_template** - Generate CloudFormation templates from existing resources using IaC Generator API
     9. **analyze_stack** - Analyze this {stack name} and return detailed resource information
-    10. **propose_new_stacks** - Propose new stack in your AWS account unmanaged resources and optional template generation
+    10. **propose_new_stacks** - Propose new stacks in your AWS account unmanaged resources and optional template generation
 
     ## Resource Discovery and Analysis Tools
     11. **list_resources_by_filter** - List AWS resources with advanced filtering by type, tags, and identifiers
@@ -605,15 +605,17 @@ async def analyze_stack(
         description='The AWS region that the operation should be performed in', default=None
     ),
 ) -> dict:
-    """Analyze a CloudFormation stack and return detailed information about its resources.
+    """Analyze a CloudFormation stack and return detailed information about its resources and a generated template of related unmanaged resources augmented to the stack.
 
     Parameters:
         stack_name: The name of the CloudFormation stack to analyze
         region: AWS region to use (e.g., "us-east-1", "us-west-2")
 
     Returns:
-        Complete stack analysis results without automatically storing in RAG. The user can
-        separately query RAG if they wish using query_resources_rag.
+        Complete stack analysis results including account summary, related resources summary,
+        generated template of related unmanaged resources that could be part of the stack, and best practices for the stack.
+        The results are summarized by managed/unmanaged resources and by product type.
+
 
     Raises:
         ClientError: If the stack name is not provided or if the stack does not exist in the specified region.
@@ -648,7 +650,6 @@ async def analyze_stack(
         # Return the summarized stack analysis results
         return {
             'message': f'Stack analysis for **{stack_name}** completed successfully.',
-            'note': 'Analysis results are returned directly without being stored in RAG. Use query_resources_rag separately if needed.',
             'stack_info': stack_analysis.get('stack_info', {}),
             'stack_status': stack_analysis.get('stack_status'),
             'creation_time': stack_analysis.get('creation_time'),

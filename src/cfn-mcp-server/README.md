@@ -133,29 +133,28 @@ Track the status of long-running resource operations.
 
 #### create_template
 Generate CloudFormation templates from existing resources using IaC Generator API.
-**Example**: Create a YAML template for my S3 buckets and their associated resources.
 
 #### analyze_stack
 Analyze this {stack name} and return detailed resource information.
-**Example**: Analyze this production-stack and show me all resources and their relationships.
+**Example**: Analyze this production-stack
 
 #### propose_new_stacks
-Propose new stack in your AWS account with resource limits and optional template generation.
-**Example**: Propose new stack for my unmanaged resources in my AWS account.
+Propose new stacks in your AWS account with resource limits and optional template generation.
+**Example**: Propose new stacks for my unmanaged resources in my AWS account.
 
 ### Resource Discovery and Analysis Tools
 
 #### list_resources_by_filter
-List AWS resources with advanced filtering by type, tags, and identifiers.
+List AWS resources with resources from a resource scan with  filtering by type, tags, and identifiers.
 **Example**: Show me all resources tagged with "environment=production".
 
 #### list_related_resources
 Find AWS resources related to specified resources using dependency analysis.
-**Example**: Show me all resources related to my primary database instance.
+**Example**: Show me all resources related to these resource {list}
 
 #### start_resource_scan
 Initiate resource scans for specific resource types or the entire AWS account.
-**Example**: Scan my AWS account for all EC2 and S3 resources.
+**Example**: Scan my AWS account.
 
 ## Basic Usage
 
@@ -202,6 +201,11 @@ Ensure your AWS credentials have the following minimum permissions:
                 "cloudcontrol:CreateResource",
                 "cloudcontrol:DeleteResource",
                 "cloudcontrol:UpdateResource",
+                "cloudformation:DescribeStacks",
+                "cloudformation:ListStackResources",
+                "cloudformation:DescribeStackResources",
+                "cloudformation:ListResourceScanResources",
+                "cloudformation:ListResourceScanRelatedResources",
                 "cloudformation:CreateGeneratedTemplate",
                 "cloudformation:DescribeGeneratedTemplate",
                 "cloudformation:GetGeneratedTemplate"
