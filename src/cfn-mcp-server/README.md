@@ -133,6 +133,7 @@ Track the status of long-running resource operations.
 
 #### create_template
 Generate CloudFormation templates from existing resources using IaC Generator API.
+**Example**: Create a YAML template for my S3 buckets and their associated resources.
 
 #### analyze_stack
 Analyze this {stack name} and return detailed resource information.
